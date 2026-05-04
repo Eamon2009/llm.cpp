@@ -1,6 +1,7 @@
-# Quadtrix.cpp  <p align="center">
- 
+# Quadtrix.cpp
+<p align="center">
 <img width="1550" height="393" alt="image" src="https://github.com/user-attachments/assets/22b8f8de-362d-40f7-8313-6a14f94cc647" />
+
  <a href="https://eamon2009.github.io/LLM/">
     <img src="https://img.shields.io/badge/Quadtrix-Paper-blue?style=for-the-badge">
   </a>
