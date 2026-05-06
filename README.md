@@ -53,6 +53,9 @@ Quadtrix.cpp is a transformer learning laboratory. Write your own backprop, debu
 **Parallel tracks**: Native C++ training path (educational), PyTorch path (faster iteration), DirectML path (Windows iGPU), pure C inference (deployment), web frontend (chat UI).
 
 ## Quick Start
+<img width="1919" height="1011" alt="image" src="https://github.com/user-attachments/assets/744123e5-4b20-424e-8528-474da2c8445a" />
+
+
 
 ```bash
 # Native C++ path - train from scratch
