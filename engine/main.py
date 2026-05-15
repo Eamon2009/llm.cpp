@@ -65,7 +65,7 @@ start = time.time()
 #  CONFIGURATION
 
 
-cleaned_path  = Path(os.environ.get("QUADTRIX_TRAIN_DATA", SCRIPT_DIR / "input.txt"))
+cleaned_path  = Path(os.environ.get("data", SCRIPT_DIR / "input.txt"))
 train_split   = 0.9
 seed          = 1337
 

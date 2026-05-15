@@ -14,7 +14,14 @@ Quadtrix.cpp is a local language model project with several execution paths:
 
 The project is designed as a technical learning implementation. The C++ path exposes the transformer internals directly: tensor operations, attention, layer normalization, cross-entropy, analytical gradients, AdamW, checkpointing, and autoregressive generation.
 
-<img width="1010" height="727" alt="Quadtrix architecture image" src="https://github.com/user-attachments/assets/b52fdbe7-9fe2-4415-9282-d0b97cb00165" />
+## v1.1.0 
+<img width="2442" height="1586" alt="run_20260508_110726" src="https://github.com/user-attachments/assets/ef51d1c3-e28e-4674-8a71-5513e753b174" />
+
+---
+
+<img width="2185" height="829" alt="run_20260430_192930" src="https://github.com/user-attachments/assets/c6db061a-aa8d-4d8d-a1e2-1a81418bb613" />
+
+---
 
 ## Contents
 
