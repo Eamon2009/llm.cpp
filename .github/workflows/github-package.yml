@@ -1,0 +1,44 @@
+name: Publish GitHub Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-github-package:
+    name: Publish to GitHub Packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js for GitHub Packages
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@eamon2009"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend assets
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+
+      - name: Prepare GitHub Packages metadata
+        run: |
+          npm pkg set name="@eamon2009/quadtrix"
+          npm pkg set publishConfig.registry="https://npm.pkg.github.com"
+
+      - name: Publish package
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
