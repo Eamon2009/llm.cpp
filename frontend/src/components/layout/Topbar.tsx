@@ -24,8 +24,8 @@ export function Topbar() {
     <header className="border-b border-[var(--border-subtle)] bg-base/95 px-4 py-3 backdrop-blur md:px-6">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-surface">
-            <img alt="Quadtrix.cpp icon" className="h-5 w-5 object-contain opacity-90 grayscale invert" src="/icon.svg" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white">
+            <img alt="Quadtrix.cpp icon" className="h-8 w-8 object-contain" src="/icon.svg" />
           </div>
           <div className="min-w-0">
             <div className="truncate font-mono text-sm font-semibold tracking-[0.18em] text-[var(--text-primary)]">

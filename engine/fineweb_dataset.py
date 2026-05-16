@@ -36,10 +36,10 @@ def download_fineweb_sample(output_dir="engine", target_size_mb=30):
         current_bytes += sample_size
         
         if (i + 1) % 100 == 0:
-            print(f"Collected {i + 1} samples (~{current_bytes / (1024*1024):.2f} MB)")
+            print(f"Collected {i + 1} samples ({current_bytes / (1024*1024):.2f} MB)")
     
     print(f"\nDownloaded {len(samples)} samples ({current_bytes / (1024*1024):.2f} MB)")
-    output_file = os.path.join(output_dir, "fineweb_30mb.txt")
+    output_file = os.path.join(output_dir, "input.txt")
     with open(output_file, 'w', encoding='utf-8') as f:
         for sample in samples:
             f.write(sample['text'])
@@ -54,7 +54,7 @@ def download_fineweb_sample(output_dir="engine", target_size_mb=30):
 if __name__ == "__main__":
     try:
         download_fineweb_sample()
-        print("\n✓ Download completed successfully!")
+        print("\nDownload completed successfully!")
     except Exception as e:
         print(f"\ Error: {e}")
         print("\nMake sure you have the 'datasets' library installed:")

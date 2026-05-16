@@ -1,8 +1,17 @@
 {
   "name": "quadtrix",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "CLI for running Quadtrix.cpp chat and local training.",
   "license": "MIT",
+  "author": "Eamon",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Eamon2009/Quadtrix.cpp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Eamon2009/Quadtrix.cpp/issues"
+  },
+  "homepage": "https://github.com/Eamon2009/Quadtrix.cpp#readme",
   "bin": {
     "quadtrix": "bin/quadtrix.js"
   },

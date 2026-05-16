@@ -1,75 +1,42 @@
-<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
-
-  <!-- Background -->
-  <rect width="1920" height="1080" fill="#05070D"/>
-
-  <!-- Gradient -->
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#7C3AED"/>
-      <stop offset="100%" stop-color="#22D3EE"/>
-    </linearGradient>
+    <filter id="softShadow" x="58" y="0" width="396" height="500" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#101820" flood-opacity=".18"/>
+    </filter>
   </defs>
 
-  <!-- CENTER GROUP -->
-  <g transform="translate(960,540) scale(2.2) translate(-256,-256)">
+  <g filter="url(#softShadow)">
+    <path
+      d="M258 10C272 10 285 14 297 21L409 86C433 100 448 126 448 154V330C448 358 433 384 409 398L297 463C272 477 241 477 216 463L103 398C79 384 64 358 64 330V154C64 126 79 100 103 86L216 21C229 14 244 10 258 10Z"
+      fill="#ffffff"
+      stroke="#202b34"
+      stroke-width="8"
+      stroke-linejoin="round"
+    />
 
-    <!-- Hexagon -->
-    <polygon points="256,70 390,150 390,362 256,442 122,362 122,150"
-             fill="none"
-             stroke="url(#grad)"
-             stroke-width="10"
-             stroke-linejoin="round"/>
+    <path
+      d="M445 154C445 132 421 118 402 130L280 207C262 218 252 238 252 259V418C252 452 289 474 318 457L410 403C434 389 448 363 448 335V158C448 157 448 155 445 154Z"
+      fill="#202b34"
+    />
 
-    <!-- Left circuits -->
-    <g stroke="url(#grad)" stroke-width="4" fill="none" stroke-linecap="round">
-      <line x1="122" y1="220" x2="90" y2="220"/>
-      <line x1="122" y1="256" x2="70" y2="256"/>
-      <line x1="122" y1="292" x2="90" y2="292"/>
+    <path
+      d="M448 156C448 134 423 121 405 133L280 211C264 221 255 239 255 258V418C255 451 291 471 319 455"
+      stroke="#202b34"
+      stroke-width="8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
 
-      <circle cx="70" cy="256" r="4" fill="#7C3AED"/>
-      <circle cx="90" cy="220" r="4" fill="#7C3AED"/>
-      <circle cx="90" cy="292" r="4" fill="#7C3AED"/>
-    </g>
+    <path
+      d="M319 250C307 246 293 246 284 253C274 260 270 273 274 284C278 296 288 301 302 305C319 310 333 317 335 335C338 355 326 372 307 378C296 382 284 381 273 377"
+      stroke="#ffffff"
+      stroke-width="21"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path d="M309 227L304 251" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+    <path d="M292 376L287 401" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
 
-    <!-- Right circuits -->
-    <g stroke="url(#grad)" stroke-width="4" fill="none" stroke-linecap="round">
-      <line x1="390" y1="220" x2="422" y2="220"/>
-      <line x1="390" y1="256" x2="442" y2="256"/>
-      <line x1="390" y1="292" x2="422" y2="292"/>
-
-      <circle cx="442" cy="256" r="4" fill="#22D3EE"/>
-      <circle cx="422" cy="220" r="4" fill="#22D3EE"/>
-      <circle cx="422" cy="292" r="4" fill="#22D3EE"/>
-    </g>
-
-    <!-- > -->
-    <text x="180" y="275"
-          font-family="monospace"
-          font-size="90"
-          fill="#E5E7EB">
-      &gt;
-    </text>
-
-    <!-- _ -->
-    <rect x="235" y="290" width="40" height="6" rx="3" fill="#E5E7EB"/>
-
-    <!-- C -->
-    <text x="285" y="275"
-          font-family="monospace"
-          font-size="90"
-          fill="url(#grad)">
-      C
-    </text>
-
-    <!-- ++ -->
-    <text x="350" y="245"
-          font-family="monospace"
-          font-size="40"
-          fill="#E5E7EB">
-      ++
-    </text>
-
+    <path d="M350 342L389 320" stroke="#5fc832" stroke-width="13"/>
   </g>
-
 </svg>
