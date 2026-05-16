@@ -7,7 +7,10 @@ libtorch-win-shared-with-deps-2.11.0+cpu (2)
 frontend/node_modules/
 frontend/dist/
 .venv
+.npm-cache/
 build
 CMakeCache.txt
+engine/fine-tune/input.txt
 *best_model.pt
+*.pt
 *exe

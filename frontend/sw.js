@@ -1,4 +1,4 @@
-const CACHE_NAME = 'quadtrix-studio-v3';
+const CACHE_NAME = 'quadtrix-chat-v1';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -16,20 +16,37 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
   const url = new URL(event.request.url);
 
-  const liveApiRoutes = ['/generate', '/stop', '/status', '/models', '/health'];
-  if (liveApiRoutes.some((route) => url.pathname.startsWith(route))) {
+  const isApiRequest =
+    url.pathname.startsWith('/api/') ||
+    url.pathname === '/generate' ||
+    url.pathname === '/health' ||
+    url.pathname === '/status';
+
+  if (isApiRequest) {
     return;
   }
 
   event.respondWith(
-    fetch(event.request)
+    caches.match(event.request).then((cached) => {
+      if (cached) {
+        return cached;
+      }
+      return fetch(event.request)
       .then((response) => {
+        if (!response || response.status !== 200 || response.type === 'opaque') {
+          return response;
+        }
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         return response;
       })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/')))
+        .catch(() => caches.match('/'));
+    })
   );
 });

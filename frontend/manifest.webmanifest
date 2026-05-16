@@ -1,0 +1,20 @@
+{
+  "name": "Quadtrix.cpp Chat",
+  "short_name": "Quadtrix",
+  "description": "Installable local chat interface for Quadtrix C++ and PyTorch model backends.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "orientation": "any",
+  "categories": ["developer", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

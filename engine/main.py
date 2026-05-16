@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 import time
 import sys
+import os
 from pathlib import Path
 import tiktoken
 
@@ -64,7 +65,7 @@ start = time.time()
 #  CONFIGURATION
 
 
-cleaned_path  = SCRIPT_DIR / "input.txt"
+cleaned_path  = Path(os.environ.get("data", SCRIPT_DIR / "input.txt"))
 train_split   = 0.9
 seed          = 1337
 

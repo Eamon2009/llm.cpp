@@ -1,0 +1,54 @@
+{
+  "name": "quadtrix",
+  "version": "1.0.2",
+  "description": "CLI for running Quadtrix.cpp chat and local training.",
+  "license": "MIT",
+  "author": "Eamon",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Eamon2009/Quadtrix.cpp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Eamon2009/Quadtrix.cpp/issues"
+  },
+  "homepage": "https://github.com/Eamon2009/Quadtrix.cpp#readme",
+  "bin": {
+    "quadtrix": "bin/quadtrix.js"
+  },
+  "files": [
+    "bin/",
+    "backend/**/*.py",
+    "backend/requirements.txt",
+    "backend/README.md",
+    "backend/.env.example",
+    "config/",
+    "data/data_set.py",
+    "engine/*.py",
+    "engine/engine.c",
+    "frontend/dist/",
+    "iGPU/*.py",
+    "include/",
+    "src/",
+    "main.cpp",
+    "LICENSE",
+    "README.md",
+    "PUBLISHING.md",
+    "run.md"
+  ],
+  "scripts": {
+    "build:frontend": "npm --prefix frontend run build",
+    "prepack": "npm run build:frontend"
+  },
+  "keywords": [
+    "quadtrix",
+    "llm",
+    "transformer",
+    "chat",
+    "machine-learning",
+    "cpp",
+    "pytorch"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

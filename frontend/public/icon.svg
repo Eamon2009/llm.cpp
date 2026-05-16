@@ -1,0 +1,42 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="softShadow" x="58" y="0" width="396" height="500" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#101820" flood-opacity=".18"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#softShadow)">
+    <path
+      d="M258 10C272 10 285 14 297 21L409 86C433 100 448 126 448 154V330C448 358 433 384 409 398L297 463C272 477 241 477 216 463L103 398C79 384 64 358 64 330V154C64 126 79 100 103 86L216 21C229 14 244 10 258 10Z"
+      fill="#ffffff"
+      stroke="#202b34"
+      stroke-width="8"
+      stroke-linejoin="round"
+    />
+
+    <path
+      d="M445 154C445 132 421 118 402 130L280 207C262 218 252 238 252 259V418C252 452 289 474 318 457L410 403C434 389 448 363 448 335V158C448 157 448 155 445 154Z"
+      fill="#202b34"
+    />
+
+    <path
+      d="M448 156C448 134 423 121 405 133L280 211C264 221 255 239 255 258V418C255 451 291 471 319 455"
+      stroke="#202b34"
+      stroke-width="8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+
+    <path
+      d="M319 250C307 246 293 246 284 253C274 260 270 273 274 284C278 296 288 301 302 305C319 310 333 317 335 335C338 355 326 372 307 378C296 382 284 381 273 377"
+      stroke="#ffffff"
+      stroke-width="21"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path d="M309 227L304 251" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+    <path d="M292 376L287 401" stroke="#ffffff" stroke-width="20" stroke-linecap="round"/>
+
+    <path d="M350 342L389 320" stroke="#5fc832" stroke-width="13"/>
+  </g>
+</svg>
