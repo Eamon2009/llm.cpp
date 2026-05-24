@@ -12,7 +12,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -26,6 +25,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Set lowercase image name
+        id: image
+        run: |
+          echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -41,7 +45,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
@@ -59,14 +63,13 @@ jobs:
             BASE_IMAGE=ubuntu:24.04
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
       - name: Image published
         if: github.event_name != 'pull_request'
         run: |
-          echo "image published to GitHub Packages"
+          echo "Image published to GitHub Packages"
           echo ""
           echo "Pull with:"
-          echo "  docker pull ghcr.io/${{ github.repository }}:latest"
+          echo "  docker pull ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:latest"
           echo ""
           echo "Or via docker-compose:"
-          echo "  image: ghcr.io/${{ github.repository }}:latest"
+          echo "  image: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:latest"
