@@ -19,7 +19,7 @@ export function Topbar() {
   const tooltip =
     modelBackend === "cpp"
       ? "C++ server - run: ./Quadtrix.exe --server --port 8080"
-      : "PyTorch checkpoint - engine/best_model .pt";
+      : "PyTorch checkpoint - engine/best_model.pt";
   return (
     <header className="border-b border-[var(--border-subtle)] bg-base/95 px-4 py-3 backdrop-blur md:px-6">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
