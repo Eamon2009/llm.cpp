@@ -51,7 +51,7 @@ jobs:
             quadtrix README.md LICENSE run.md backend engine gpu include main.cpp data config frontend/dist
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: quadtrix-linux.tar.gz
           generate_release_notes: true
