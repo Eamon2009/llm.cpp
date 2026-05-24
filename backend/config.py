@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     max_sessions: int = Field(default=1000, alias="MAX_SESSIONS")
     session_ttl_hours: int = Field(default=24, alias="SESSION_TTL_HOURS")
     cpp_server_url: str = Field(default="http://localhost:8080", alias="CPP_SERVER_URL")
-    torch_checkpoint_path: str = Field(default="../engine/best_model .pt", alias="TORCH_CHECKPOINT_PATH")
+    torch_checkpoint_path: str = Field(default="../engine/best_model.pt", alias="TORCH_CHECKPOINT_PATH")
     request_timeout_seconds: float = Field(default=60.0, alias="REQUEST_TIMEOUT_SECONDS")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
