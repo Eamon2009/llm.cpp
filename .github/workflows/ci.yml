@@ -44,7 +44,7 @@ jobs:
           pip install fastapi "uvicorn[standard]" pydantic pydantic-settings httpx redis
 
       - name: Compile Python sources
-        run: python -m compileall backend engine iGPU
+        run: python -m compileall backend engine
 
       - name: Import FastAPI application
         working-directory: backend
