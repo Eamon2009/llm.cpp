@@ -1,0 +1,35 @@
+.git
+.gitignore
+.github
+.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+engine/logs/
+node_modules
+frontend/node_modules
+.npm-cache
+frontend/.vite
+frontend/dist
+
+#  Model weights 
+*.pt
+*.bin
+models/
+
+#  Windows build artifacts
+*.exe
+quadtrix.exe
+*.png
+*.jpg
+*.jpeg
+*.md
+LICENSE
+contributing.md
+SECURITY.md
+run.md
+.DS_Store
+Thumbs.db
+.idea
+.vscode

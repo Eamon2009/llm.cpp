@@ -1,23 +1,24 @@
 # Quadtrix.cpp
-<img width="2442" height="1586" alt="run_20260508_110726" src="https://github.com/user-attachments/assets/ef51d1c3-e28e-4674-8a71-5513e753b174" />
-
-Quadtrix.cpp is a local language model project with several execution paths:
-
-- A dependency-free C++17 transformer implementation with manual forward and backward passes.
-- A PyTorch training and inference path for faster experimentation on CPU, CUDA, or supported accelerator backends.
-- A FastAPI middleware layer for chat sessions, health checks, backend selection, and feedback.
-- A React + TypeScript frontend for local chat, settings, session history, and model status.
-- Optional package/CLI support through `bin/quadtrix.js`.
+---
+Quadtrix.cpp is a local large language model project built around a modular, multi-path architecture that allows to choose the right execution strategy for their hardware and workflow. Whether you are working on a bare-metal embedded environment, running experiments on a GPU cluster, serving a REST API, or interacting through a browser-based chat interface, Quadtrix.cpp provides a coherent and composable foundation for each of those scenarios. This is designed to be approachable for people who want to read and modify every layer of the stack, while remaining practical enough for people who simply want to spin up a working local model quickly.
+> For full technical reference, check the documentation — <a href="https://eamon2009.github.io/LLMs/" style="color:#1a73e8;text-decoration:underline;" target="_blank"> Docs</a>
+ 
 
 
 > [!IMPORTANT]
 > Please be aware that several commands listed in this documentation—specifically those involving file paths and directory navigation—should not be directly copied and pasted into your terminal. Because file structures and path syntax (such as / vs \) vary significantly across operating systems like Windows, macOS, and Linux, you must manually adjust these arguments to match your local environment. Ensure you verify your current working directory and replace any placeholder paths with the absolute or relative path specific to your machine to avoid execution errors.
 
+---
+##  Architecture
 
-The project is designed as a technical learning implementation. The C++ path exposes the transformer internals directly: tensor operations, attention, layer normalization, cross-entropy, analytical gradients, AdamW, checkpointing, and autoregressive generation.
+<img width="1016" height="684" alt="image" src="https://github.com/user-attachments/assets/0e9faad4-71a9-4c7f-80e9-1136dfea6e57" />
+The diagram shows how tokens enter at the bottom as raw IDs, get converted into vector embeddings with positional information added, then pass upward through a repeated stack of decoder blocks - each block applying masked attention followed by a feed-forward layer, with normalisation wrapping both. At the very top, a linear projection maps those representations to output logits across the vocabulary. The right-hand side zooms into the attention mechanism itself, showing how queries, keys, and values are linearly projected, fed into a scaled dot-product with an optional causal mask and softmax, then concatenated across all heads before being projected back out. The training flow panel on the far right shows this running as a five-step cycle per batch: data loading, forward pass, loss computation, backward pass for gradients, and a weight update. The bottom section confirms the behaviour through training loss, validation loss, and perplexity plots - all three curves descending and converging steadily as steps increase, indicating the model is learning as expected.
+ 
 
 ## v1.1.0 
 <img width="2185" height="829" alt="run_20260430_192930" src="https://github.com/user-attachments/assets/c6db061a-aa8d-4d8d-a1e2-1a81418bb613" />
+<img width="2442" height="1586" alt="run_20260508_110726" src="https://github.com/user-attachments/assets/ef51d1c3-e28e-4674-8a71-5513e753b174" />
+
 
 ---
 

@@ -1,107 +1,120 @@
 #pragma once
+
 #include "common.h"
-#include "tensor.cuh"
-#include <cstring>
-static inline void *qx_host_alloc(size_t n)
-{
-    void *p = malloc(n);
-    if (!p && n)
-    {
-        perror("[QX] malloc");
-        exit(1);
+#include "runtime.cuh"
+
+#include <cuda_runtime.h>
+
+#include <cstddef>
+#include <utility>
+
+namespace quadtrix {
+namespace cuda {
+
+class DeviceBuffer {
+public:
+    DeviceBuffer() = default;
+
+    explicit DeviceBuffer(std::size_t bytes, int device_id = -1) {
+        allocate(bytes, device_id);
     }
-    return p;
-}
-static inline void qx_host_free(void *p)
-{
-    free(p);
-}
 
-static inline void *qx_pinned_alloc(size_t n)
-{
-    void *p = nullptr;
-    CUDA_CHECK(cudaMallocHost(&p, n));
-    return p;
-}
-static inline void qx_pinned_free(void *p)
-{
-    if (p)
-        CUDA_CHECK(cudaFreeHost(p));
-}
-
-static inline void *qx_device_alloc(size_t n, int dev = 0)
-{
-    CUDA_CHECK(cudaSetDevice(dev));
-    void *p = nullptr;
-    CUDA_CHECK(cudaMalloc(&p, ROUND_UP(n, QX_MEM_ALIGN)));
-    return p;
-}
-static inline void qx_device_free(void *p)
-{
-    if (p)
-        CUDA_CHECK(cudaFree(p));
-}
-static inline void qx_device_zero(void *p, size_t n, cudaStream_t s = 0)
-{
-    if (p && n)
-        CUDA_CHECK(cudaMemsetAsync(p, 0, n, s));
-}
-// Tensor allocators
-static inline Tensor *tensor_alloc_device(const TensorShape &sh, DType dt,
-                                          int dev = 0, cudaStream_t s = 0,
-                                          const char *name = "")
-{
-    Tensor *t = (Tensor *)calloc(1, sizeof(Tensor));
-    t->shape = sh;
-    t->dtype = dt;
-    t->mem_loc = MEM_DEVICE;
-    t->owns_data = true;
-    t->device_id = dev;
-    strncpy(t->name, name, 63);
-    t->data = qx_device_alloc((size_t)sh.numel() * dtype_size(dt), dev);
-    qx_device_zero(t->data, (size_t)sh.numel() * dtype_size(dt), s);
-    return t;
-}
-
-static inline Tensor *tensor_alloc_host(const TensorShape &sh, DType dt,
-                                        bool pinned = false, const char *name = "")
-{
-    Tensor *t = (Tensor *)calloc(1, sizeof(Tensor));
-    t->shape = sh;
-    t->dtype = dt;
-    t->mem_loc = pinned ? MEM_HOST_PINNED : MEM_HOST;
-    t->owns_data = true;
-    t->device_id = -1;
-    strncpy(t->name, name, 63);
-    size_t nb = (size_t)sh.numel() * dtype_size(dt);
-    t->data = pinned ? qx_pinned_alloc(nb) : calloc(1, nb);
-    return t;
-}
-
-static inline void tensor_free(Tensor *t)
-{
-    if (!t)
-        return;
-    if (t->owns_data && t->data)
-    {
-        if (t->mem_loc == MEM_DEVICE)
-            qx_device_free(t->data);
-        else if (t->mem_loc == MEM_HOST_PINNED)
-            qx_pinned_free(t->data);
-        else
-            free(t->data);
+    ~DeviceBuffer() {
+        release();
     }
-    free(t);
+
+    DeviceBuffer(const DeviceBuffer&) = delete;
+    DeviceBuffer& operator=(const DeviceBuffer&) = delete;
+
+    DeviceBuffer(DeviceBuffer&& other) noexcept {
+        swap(other);
+    }
+
+    DeviceBuffer& operator=(DeviceBuffer&& other) noexcept {
+        if (this != &other) {
+            release();
+            swap(other);
+        }
+        return *this;
+    }
+
+    void allocate(std::size_t bytes, int device_id = -1) {
+        release();
+        if (bytes == 0) {
+            return;
+        }
+        if (device_id >= 0) {
+            device_id_ = device_id;
+            DeviceGuard guard(device_id);
+            QUADTRIX_CUDA_ABORT(cudaMalloc(&ptr_, bytes));
+        } else {
+            device_id_ = current_device();
+            QUADTRIX_CUDA_ABORT(cudaMalloc(&ptr_, bytes));
+        }
+        bytes_ = bytes;
+    }
+
+    void release() {
+        if (ptr_ != nullptr) {
+            if (device_id_ >= 0) {
+                DeviceGuard guard(device_id_);
+                cudaFree(ptr_);
+            } else {
+                cudaFree(ptr_);
+            }
+            ptr_ = nullptr;
+            bytes_ = 0;
+            device_id_ = -1;
+        }
+    }
+
+    void* data() {
+        return ptr_;
+    }
+
+    const void* data() const {
+        return ptr_;
+    }
+
+    std::size_t bytes() const {
+        return bytes_;
+    }
+
+    bool empty() const {
+        return ptr_ == nullptr || bytes_ == 0;
+    }
+
+    int device_id() const {
+        return device_id_;
+    }
+
+    void swap(DeviceBuffer& other) noexcept {
+        std::swap(ptr_, other.ptr_);
+        std::swap(bytes_, other.bytes_);
+        std::swap(device_id_, other.device_id_);
+    }
+
+private:
+    void* ptr_ = nullptr;
+    std::size_t bytes_ = 0;
+    int device_id_ = -1;
+};
+
+inline Status copy_h2d(void* dst_device, const void* src_host, std::size_t bytes, cudaStream_t stream = nullptr) {
+    return QUADTRIX_CUDA_CHECK(cudaMemcpyAsync(dst_device, src_host, bytes, cudaMemcpyHostToDevice, stream));
 }
-static inline void tensor_h2d(Tensor *dst, const Tensor *src, cudaStream_t s = 0)
-{
-    CUDA_CHECK(cudaMemcpyAsync(dst->data, src->data, dst->nbytes(), cudaMemcpyHostToDevice, s));
+
+inline Status copy_d2h(void* dst_host, const void* src_device, std::size_t bytes, cudaStream_t stream = nullptr) {
+    return QUADTRIX_CUDA_CHECK(cudaMemcpyAsync(dst_host, src_device, bytes, cudaMemcpyDeviceToHost, stream));
 }
-static inline void tensor_d2h(Tensor *dst, const Tensor *src, cudaStream_t s = 0)
-{
-    CUDA_CHECK(cudaMemcpyAsync(dst->data, src->data, dst->nbytes(), cudaMemcpyDeviceToHost, s));
+
+inline Status copy_d2d(void* dst_device, const void* src_device, std::size_t bytes, cudaStream_t stream = nullptr) {
+    return QUADTRIX_CUDA_CHECK(cudaMemcpyAsync(dst_device, src_device, bytes, cudaMemcpyDeviceToDevice, stream));
 }
-static inline void tensor_d2d(Tensor *dst, const Tensor *src, cudaStream_t s = 0)
-{
-    CUDA_CHECK(cudaMemcpyAsync(dst->data, src->data, dst->nbytes(), cudaMemcpyDeviceToDevice, s));
+
+inline Status memset_device(void* dst_device, int value, std::size_t bytes, cudaStream_t stream = nullptr) {
+    return QUADTRIX_CUDA_CHECK(cudaMemsetAsync(dst_device, value, bytes, stream));
 }
+
+}  // namespace cuda
+}  // namespace quadtrix

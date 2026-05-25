@@ -28,8 +28,8 @@ export const useSettingsStore = create<SettingsState>()(
       apiBaseUrl: defaultApiBaseUrl,
       maxTokens: 200,
       temperature: 1.0,
-      modelLabel: "quadtrix-v1.0 - cpu",
-      modelBackend: "cpp",
+      modelLabel: "quadtrix-v1.0 - PyTorch",
+      modelBackend: "torch",
       settingsOpen: false,
       statsOpen: false,
       setApiBaseUrl: (value) => set({ apiBaseUrl: value }),
@@ -40,6 +40,14 @@ export const useSettingsStore = create<SettingsState>()(
       setSettingsOpen: (value) => set({ settingsOpen: value }),
       setStatsOpen: (value) => set({ statsOpen: value }),
     }),
-    { name: "quadtrix-settings" },
+    {
+      name: "quadtrix-settings",
+      version: 1,
+      migrate: (persistedState) => ({
+        ...(persistedState as Partial<SettingsState>),
+        modelLabel: "quadtrix-v1.0 - PyTorch",
+        modelBackend: "torch",
+      }),
+    },
   ),
 );

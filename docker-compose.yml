@@ -1,0 +1,34 @@
+services:
+  quadtrix:
+    image: ghcr.io/eamon2009/quadtrix.cpp:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # for cuda
+        # BASE_IMAGE: nvidia/cuda:12.4.1-cudnn-runtime-ubuntu24.04
+        BASE_IMAGE: ubuntu:24.04
+
+    ports:
+      - "3001:3001" # FastAPI backend
+      - "8080:8080" # React frontend
+
+    volumes:
+      # Place best_model.pt and/or best_model.bin inside ./models/
+      - ./models:/app/models
+
+    environment:
+      TORCH_CHECKPOINT_PATH: /app/models/best_model.pt
+      GPT_MODEL_PATH: /app/models/best_model.bin
+      CORS_ORIGINS: http://localhost:8080
+      LOG_LEVEL: INFO
+      MAX_SESSIONS: 1000
+      SESSION_TTL_HOURS: 24
+    restart: unless-stopped
+
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s

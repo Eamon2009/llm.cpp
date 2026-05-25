@@ -1,100 +1,168 @@
 #pragma once
+
 #include "common.h"
-// TensorShape — dimensions + strides (row-major by default)
-struct QX_ALIGN_16 TensorShape
-{
-    int dims[QX_MAX_DIMS];
-    int strides[QX_MAX_DIMS];
-    int ndim;
-    int _pad;
+#include "memory.cuh"
 
-    QX_HOST_DEVICE QX_INLINE int64_t numel() const
-    {
-        int64_t n = 1;
-        for (int i = 0; i < ndim; i++)
-            n *= dims[i];
-        return n;
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+namespace quadtrix {
+namespace cuda {
+
+constexpr int kMaxTensorDims = 8;
+
+struct TensorShape {
+    int rank = 0;
+    std::array<std::int64_t, kMaxTensorDims> dims{};
+    std::array<std::int64_t, kMaxTensorDims> strides{};
+
+    static TensorShape contiguous(const std::int64_t* sizes, int ndim) {
+        if (ndim < 1 || ndim > kMaxTensorDims) {
+            std::fprintf(stderr, "Tensor rank %d is outside supported range [1, %d]\n", ndim, kMaxTensorDims);
+            std::abort();
+        }
+
+        TensorShape shape;
+        shape.rank = ndim;
+        for (int i = 0; i < ndim; ++i) {
+            if (sizes[i] <= 0) {
+                std::fprintf(stderr, "Tensor dimension %d must be positive, got %lld\n", i, static_cast<long long>(sizes[i]));
+                std::abort();
+            }
+            shape.dims[i] = sizes[i];
+        }
+
+        std::int64_t stride = 1;
+        for (int i = ndim - 1; i >= 0; --i) {
+            shape.strides[i] = stride;
+            stride *= shape.dims[i];
+        }
+        return shape;
     }
 
-    QX_HOST QX_INLINE void compute_strides()
-    {
-        strides[ndim - 1] = 1;
-        for (int i = ndim - 2; i >= 0; i--)
-            strides[i] = strides[i + 1] * dims[i + 1];
+    std::size_t numel() const {
+        std::size_t total = 1;
+        for (int i = 0; i < rank; ++i) {
+            if (dims[i] <= 0) {
+                return 0;
+            }
+            std::size_t next = 0;
+            if (!checked_mul(total, static_cast<std::size_t>(dims[i]), &next)) {
+                return 0;
+            }
+            total = next;
+        }
+        return rank == 0 ? 0 : total;
     }
 
-    QX_HOST QX_INLINE bool is_contiguous() const
-    {
-        int expected = 1;
-        for (int i = ndim - 1; i >= 0; i--)
-        {
-            if (strides[i] != expected)
+    bool is_contiguous() const {
+        std::int64_t expected = 1;
+        for (int i = rank - 1; i >= 0; --i) {
+            if (strides[i] != expected) {
                 return false;
+            }
             expected *= dims[i];
         }
         return true;
     }
 };
 
-static inline TensorShape make_shape(const int *d, int ndim)
-{
-    TensorShape s;
-    s.ndim = ndim;
-    s._pad = 0;
-    for (int i = 0; i < ndim; i++)
-        s.dims[i] = d[i];
-    for (int i = ndim; i < QX_MAX_DIMS; i++)
-    {
-        s.dims[i] = 1;
-        s.strides[i] = 1;
-    }
-    s.compute_strides();
-    return s;
-}
-static inline TensorShape make_shape1d(int a)
-{
-    int d[] = {a};
-    return make_shape(d, 1);
-}
-static inline TensorShape make_shape2d(int a, int b)
-{
-    int d[] = {a, b};
-    return make_shape(d, 2);
-}
-static inline TensorShape make_shape3d(int a, int b, int c)
-{
-    int d[] = {a, b, c};
-    return make_shape(d, 3);
-}
-static inline TensorShape make_shape4d(int a, int b, int c, int e)
-{
-    int d[] = {a, b, c, e};
-    return make_shape(d, 4);
-}
-// Tensor — primary data carrier (host struct, kernels get raw pointers)
-struct Tensor
-{
-    void *data;
+struct TensorView {
+    void* data = nullptr;
     TensorShape shape;
-    DType dtype;
-    MemLocation mem_loc;
-    bool owns_data;
-    int device_id;
-    char name[64];
+    DType dtype = DType::F32;
+    DeviceKind device = DeviceKind::CUDA;
+    int device_id = 0;
 
-    template <typename T>
-    QX_HOST_DEVICE QX_INLINE T *as()
-    {
-        return reinterpret_cast<T *>(data);
-    }
-    template <typename T>
-    QX_HOST_DEVICE QX_INLINE const T *as() const
-    {
-        return reinterpret_cast<const T *>(data);
+    std::size_t numel() const {
+        return shape.numel();
     }
 
-    QX_HOST QX_INLINE size_t nbytes() const { return (size_t)shape.numel() * dtype_size(dtype); }
-    QX_HOST_DEVICE QX_INLINE int dim(int i) const { return shape.dims[i]; }
-    QX_HOST_DEVICE QX_INLINE int ndim() const { return shape.ndim; }
-    QX_HOST_DEVICE QX_INLINE int64_t numel() const { return shape.numel(); }
+    std::size_t bytes() const {
+        std::size_t out = 0;
+        if (!checked_mul(numel(), dtype_size(dtype), &out)) {
+            return 0;
+        }
+        return out;
+    }
+
+    template <typename T>
+    T* data_as() {
+        return static_cast<T*>(data);
+    }
+
+    template <typename T>
+    const T* data_as() const {
+        return static_cast<const T*>(data);
+    }
 };
+
+class Tensor {
+public:
+    Tensor() = default;
+
+    Tensor(const std::int64_t* dims, int rank, DType dtype, int device_id = 0)
+        : shape_(TensorShape::contiguous(dims, rank)), dtype_(dtype), device_id_(device_id) {
+        allocate();
+    }
+
+    Tensor(const Tensor&) = delete;
+    Tensor& operator=(const Tensor&) = delete;
+    Tensor(Tensor&&) noexcept = default;
+    Tensor& operator=(Tensor&&) noexcept = default;
+
+    TensorView view() {
+        return {storage_.data(), shape_, dtype_, DeviceKind::CUDA, device_id_};
+    }
+
+    TensorView view() const {
+        return {const_cast<void*>(storage_.data()), shape_, dtype_, DeviceKind::CUDA, device_id_};
+    }
+
+    const TensorShape& shape() const {
+        return shape_;
+    }
+
+    DType dtype() const {
+        return dtype_;
+    }
+
+    int device_id() const {
+        return device_id_;
+    }
+
+    std::size_t numel() const {
+        return shape_.numel();
+    }
+
+    std::size_t bytes() const {
+        return storage_.bytes();
+    }
+
+    void* data() {
+        return storage_.data();
+    }
+
+    const void* data() const {
+        return storage_.data();
+    }
+
+private:
+    void allocate() {
+        std::size_t bytes = 0;
+        if (!checked_mul(shape_.numel(), dtype_size(dtype_), &bytes)) {
+            std::fprintf(stderr, "Tensor allocation size overflow\n");
+            std::abort();
+        }
+        storage_.allocate(bytes, device_id_);
+    }
+
+    TensorShape shape_;
+    DType dtype_ = DType::F32;
+    int device_id_ = 0;
+    DeviceBuffer storage_;
+};
+
+}  // namespace cuda
+}  // namespace quadtrix
