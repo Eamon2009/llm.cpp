@@ -16,8 +16,7 @@ ENV PATH="/app/venv/bin:$PATH"
 
 RUN pip install --no-cache-dir torch torchvision torchaudio \
       --index-url https://download.pytorch.org/whl/cu129 \
-      && pip install --no-cache-dir -r requirements.txt
-FROM nvidia/cuda:12.9.2-cudnn-runtime-ubuntu24.04 AS runtime
+      FROM nvidia/cuda:12.9.2-cudnn-runtime-ubuntu24.04 AS runtime
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -36,4 +35,4 @@ ENV PYTHONUNBUFFERED=1
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-ENTRYPOINT ["python3", "engine/main.py"]   # ← change to your entrypoint
+ENTRYPOINT ["python3", "engine/main.py"]   
