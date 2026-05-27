@@ -1,29 +1,11 @@
 name: Publish Docker image
-
 on:
-  push:
-    branches:
-      - master
-    tags:
-      - "v*.*.*"
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-  pull_request:
-    branches:
-      - master
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
   workflow_dispatch:      
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 env:
   REGISTRY: ghcr.io
-
 jobs:
   build-and-push:
     name: Build & push (${{ matrix.variant }})
@@ -31,7 +13,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-
     strategy:
       fail-fast: false
       matrix:
@@ -42,30 +23,23 @@ jobs:
           - variant: cuda
             dockerfile: Dockerfile.cuda
             tag_suffix: "-cuda"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set lowercase image name
         id: image
         run: |
           echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Log in to ghcr.io
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -76,7 +50,6 @@ jobs:
             type=semver,pattern={{version}},suffix=${{ matrix.tag_suffix }}
             type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.tag_suffix }}
             type=ref,event=pr,suffix=${{ matrix.tag_suffix }}
-
       - name: Free disk space
         if: matrix.variant == 'cuda'
         run: |
@@ -84,20 +57,17 @@ jobs:
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
           df -h
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./${{ matrix.dockerfile }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
-
       - name: Image published
-        if: github.event_name != 'pull_request'
         run: |
           echo "[${{ matrix.variant }}] published:"
           echo "  docker pull ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:latest${{ matrix.tag_suffix }}"
