@@ -20,46 +20,74 @@ export function Topbar() {
     modelBackend === "cpp"
       ? "C++ server - run: ./Quadtrix.exe --server --port 8080"
       : "PyTorch checkpoint - engine/best_model.pt";
+
   return (
-    <header className="border-b border-[var(--border-subtle)] bg-base/95 px-4 py-3 backdrop-blur md:px-6">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border-muted)] bg-white">
-            <img alt="Quadtrix.cpp icon" className="h-8 w-8 object-contain" src="/icon.svg" />
-          </div>
-          <div className="min-w-0">
-            <div className="truncate font-mono text-sm font-semibold tracking-[0.18em] text-[var(--text-primary)]">
-              Quadtrix.cpp
-            </div>
-          </div>
+    <header
+      style={{
+        borderBottom: "1px solid var(--border-subtle)",
+        background: "rgba(17,17,17,0.97)",
+        backdropFilter: "blur(8px)",
+        padding: "0 16px",
+        height: 52,
+        display: "flex",
+        alignItems: "center",
+        flexShrink: 0,
+        gap: 12,
+      }}
+    >
+      {/* Left: title (mobile only, sidebar hidden on mobile) */}
+      <div className="md:hidden" style={{ display: "flex", alignItems: "center", gap: 8, marginRight: "auto" }}>
+        <div
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            background: "linear-gradient(135deg, #4f8ef7 0%, #2563eb 100%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 700,
+            fontSize: 12,
+            color: "#fff",
+          }}
+        >
+          Q
         </div>
-        <div className="hidden items-center gap-2 md:flex">
-          <ModelBadge degraded={Boolean(data && !online)} label={badgeLabel} online={online && !isError} tooltip={tooltip} />
-          <select
-            className="h-9 rounded-md border border-[var(--border-muted)] bg-input px-2 text-sm text-[var(--text-primary)] outline-none transition hover:border-[var(--border-strong)]"
-            onChange={(event) => setModelBackend(event.target.value as ModelBackend)}
-            value={modelBackend}
-          >
-            <option value="cpp">C++</option>
-            <option value="torch">.pt</option>
-          </select>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={clearMessages}>Clear</Button>
-          <Button onClick={() => setStatsOpen(true)}>Stats</Button>
-          <Button onClick={() => setSettingsOpen(true)}>Settings</Button>
-        </div>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Quadtrix.cpp</span>
       </div>
-      <div className="mx-auto mt-3 flex max-w-6xl items-center gap-2 md:hidden">
+
+      {/* Center stretch spacer on desktop */}
+      <div className="hidden md:block" style={{ flex: 1 }} />
+
+      {/* Model selector row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <ModelBadge degraded={Boolean(data && !online)} label={badgeLabel} online={online && !isError} tooltip={tooltip} />
         <select
-          className="h-9 rounded-md border border-[var(--border-muted)] bg-input px-2 text-sm text-[var(--text-primary)] outline-none transition hover:border-[var(--border-strong)]"
+          style={{
+            height: 32,
+            borderRadius: 6,
+            border: "1px solid var(--border-muted)",
+            background: "var(--bg-elevated)",
+            color: "var(--text-primary)",
+            padding: "0 8px",
+            fontSize: 12,
+            fontWeight: 500,
+            outline: "none",
+            cursor: "pointer",
+          }}
           onChange={(event) => setModelBackend(event.target.value as ModelBackend)}
           value={modelBackend}
         >
           <option value="cpp">C++</option>
           <option value="torch">.pt</option>
         </select>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <Button onClick={clearMessages}>Clear</Button>
+        <Button onClick={() => setStatsOpen(true)}>Stats</Button>
+        <Button onClick={() => setSettingsOpen(true)}>Settings</Button>
       </div>
     </header>
   );
