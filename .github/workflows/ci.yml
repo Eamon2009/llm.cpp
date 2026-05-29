@@ -1,10 +1,26 @@
 name: CI
 
 on:
-  push:
-    branches: [master, dev, "release/**"]
-  pull_request:
-    branches: [master, dev]
+ 
+  issue_comment:
+    types: [created]
+
+ 
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "What do you want to run?"
+        required: true
+        type: choice
+        options:
+          - checks
+          - docker-build
+      push_images:
+        description: "Push images to ghcr.io? (docker-build only)"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
 
 env:
   REGISTRY: ghcr.io
@@ -12,11 +28,90 @@ env:
 
 jobs:
 
+
+  slash-command:
+    name: Parse slash command
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    outputs:
+      run-checks: ${{ steps.parse.outputs.run-checks }}
+      run-docker: ${{ steps.parse.outputs.run-docker }}
+      pr-sha:     ${{ steps.pr-sha.outputs.sha }}
+    steps:
+      - name: Check commenter is a maintainer
+        id: auth
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: membership } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              username: context.actor,
+            });
+            const allowed = ['admin', 'write'].includes(membership.permission);
+            if (!allowed) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                issue_number: context.issue.number,
+                body: `@${context.actor} Only maintainers can trigger CI via slash commands.`,
+              });
+              core.setFailed('Unauthorized');
+            }
+
+      - name: Parse comment
+        id: parse
+        run: |
+          BODY="${{ github.event.comment.body }}"
+          echo "run-checks=false" >> $GITHUB_OUTPUT
+          echo "run-docker=false" >> $GITHUB_OUTPUT
+          if echo "$BODY" | grep -qE '^/run-checks'; then
+            echo "run-checks=true" >> $GITHUB_OUTPUT
+          fi
+          if echo "$BODY" | grep -qE '^/run-docker'; then
+            echo "run-docker=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get PR head SHA
+        id: pr-sha
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            core.setOutput('sha', pr.head.sha);
+
+      - name: React to comment
+        if: steps.parse.outputs.run-checks == 'true' || steps.parse.outputs.run-docker == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              comment_id: ${{ github.event.comment.id }},
+              content: 'rocket',
+            });
+
+
+  
   lint:
     name: Lint
+    needs: [slash-command]
+    if: |
+      always() && (
+        (needs.slash-command.outputs.run-checks == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'checks')
+      )
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # On slash command use PR head SHA, on manual dispatch use default
+          ref: ${{ needs.slash-command.outputs.pr-sha || github.sha }}
 
       - name: C++ format check (clang-format)
         run: |
@@ -39,6 +134,12 @@ jobs:
 
   build-cpp:
     name: Build C++ (${{ matrix.os }})
+    needs: [slash-command]
+    if: |
+      always() && (
+        (needs.slash-command.outputs.run-checks == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'checks')
+      )
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -53,6 +154,8 @@ jobs:
             artifact: quadtrix-macos-arm64
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.slash-command.outputs.pr-sha || github.sha }}
 
       - name: Install GCC (Linux)
         if: runner.os == 'Linux'
@@ -82,105 +185,19 @@ jobs:
           retention-days: 7
 
 
-  build-images:
-    name: Docker images
-    runs-on: ubuntu-latest
-    needs: [lint]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up QEMU (multi-arch)
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: github.event_name == 'push'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata (backend)
-        id: meta-backend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_PREFIX }}-backend
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=sha,prefix=sha-
-
-      - name: Build & push backend
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: .devops/Dockerfile.backend
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
-
-      - name: Extract metadata (frontend)
-        id: meta-frontend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_PREFIX }}-frontend
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=sha,prefix=sha-
-
-      - name: Build & push frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: .devops/Dockerfile.frontend
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-
-      - name: Extract metadata (cpp)
-        id: meta-cpp
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_PREFIX }}-cpp
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=sha,prefix=sha-
-
-      - name: Build & push cpp
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: .devops/Dockerfile.cpp
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta-cpp.outputs.tags }}
-          labels: ${{ steps.meta-cpp.outputs.labels }}
-          cache-from: type=gha,scope=cpp
-          cache-to: type=gha,mode=max,scope=cpp
-
-
   test-backend:
     name: Python Tests
+    needs: [slash-command, lint]
+    if: |
+      always() && (
+        (needs.slash-command.outputs.run-checks == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'checks')
+      )
     runs-on: ubuntu-latest
-    needs: [lint]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.slash-command.outputs.pr-sha || github.sha }}
 
       - uses: actions/setup-python@v5
         with:
@@ -205,10 +222,17 @@ jobs:
 
   test-frontend:
     name: Frontend Tests
+    needs: [slash-command, lint]
+    if: |
+      always() && (
+        (needs.slash-command.outputs.run-checks == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'checks')
+      )
     runs-on: ubuntu-latest
-    needs: [lint]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.slash-command.outputs.pr-sha || github.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -231,3 +255,110 @@ jobs:
       - name: Build check
         working-directory: frontend
         run: npm run build
+
+
+
+  build-images:
+    name: Docker images
+    needs: [slash-command]
+    if: |
+      always() && (
+        (needs.slash-command.outputs.run-docker == 'true') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'docker-build')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.slash-command.outputs.pr-sha || github.sha }}
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (backend)
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile.backend
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event.inputs.push_images != 'false' }}
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Extract metadata (frontend)
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-frontend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile.frontend
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event.inputs.push_images != 'false' }}
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+      - name: Extract metadata (cpp)
+        id: meta-cpp
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-cpp
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+
+      - name: Build & push cpp
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile.cpp
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event.inputs.push_images != 'false' }}
+          tags: ${{ steps.meta-cpp.outputs.tags }}
+          labels: ${{ steps.meta-cpp.outputs.labels }}
+          cache-from: type=gha,scope=cpp
+          cache-to: type=gha,mode=max,scope=cpp
+
+      - name: Post result comment
+        if: needs.slash-command.outputs.run-docker == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+              body: ' Docker images built and pushed successfully.',
+            });
