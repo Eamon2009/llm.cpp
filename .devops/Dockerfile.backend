@@ -1,10 +1,9 @@
-
-ARG CUDA=0
+ARG CUDA=1
 
 FROM python:3.11-slim AS base-cpu
 FROM nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04 AS base-cuda
 
-FROM base-cpu AS deps-cpu
+FROM base-${CUDA} AS deps
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -19,30 +18,10 @@ WORKDIR /app
 
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir \
-    torch==2.3.1+cpu \
-    torchvision==0.18.1+cpu \
-    --index-url https://download.pytorch.org/whl/cpu
-FROM base-cuda AS deps-cuda
-
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3-pip \
-    build-essential \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN python3.11 -m pip install --upgrade pip
-
-WORKDIR /app
-
-COPY backend/requirements.txt ./requirements.txt
-RUN python3.11 -m pip install --no-cache-dir -r requirements.txt \
-    && python3.11 -m pip install --no-cache-dir torch==2.3.1 torchvision==0.18.1 \
+    && pip install --no-cache-dir torch==2.3.1 torchvision==0.18.1 \
     --index-url https://download.pytorch.org/whl/cu121
-FROM deps-cpu AS final
+
+FROM deps AS final
 
 LABEL org.opencontainers.image.title="Quadtrix Python Backend"
 LABEL org.opencontainers.image.description="FastAPI + PyTorch inference layer"
