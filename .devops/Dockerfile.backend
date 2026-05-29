@@ -1,15 +1,9 @@
-# =============================================================================
-# Quadtrix.cpp — Python Backend  (FastAPI + PyTorch)
-# Supports: CPU-only (default), CUDA (--build-arg CUDA=1)
-# =============================================================================
 
 ARG CUDA=0
 
-# ── Stage 1: Base selector ────────────────────────────────────────────────────
 FROM python:3.11-slim AS base-cpu
 FROM nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04 AS base-cuda
 
-# ── Stage 2: Deps (CPU) ───────────────────────────────────────────────────────
 FROM base-cpu AS deps-cpu
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -26,11 +20,10 @@ WORKDIR /app
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir \
-        torch==2.3.1+cpu \
-        torchvision==0.18.1+cpu \
-        -f https://download.pytorch.org/whl/cpu/torch_stable.html
+    torch==2.3.1+cpu \
+    torchvision==0.18.1+cpu \
+    -f https://download.pytorch.org/whl/cpu/torch_stable.html
 
-# ── Stage 2: Deps (CUDA) ──────────────────────────────────────────────────────
 FROM base-cuda AS deps-cuda
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -49,9 +42,7 @@ WORKDIR /app
 COPY backend/requirements.txt ./requirements.txt
 RUN python3.11 -m pip install --no-cache-dir -r requirements.txt \
     && python3.11 -m pip install --no-cache-dir torch==2.3.1 torchvision==0.18.1 \
-       --index-url https://download.pytorch.org/whl/cu121
-
-# ── Stage 3: Final (CPU default) ──────────────────────────────────────────────
+    --index-url https://download.pytorch.org/whl/cu121
 FROM deps-cpu AS final
 
 LABEL org.opencontainers.image.title="Quadtrix Python Backend"
@@ -60,11 +51,9 @@ LABEL org.opencontainers.image.source="https://github.com/Eamon2009/Quadtrix.cpp
 
 WORKDIR /app
 
-# Application source
 COPY backend/      ./backend/
 COPY engine/       ./engine/
 
-# Create writable model and log dirs
 RUN mkdir -p /models /app/engine/logs
 
 VOLUME ["/models"]
@@ -83,6 +72,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 
 WORKDIR /app/backend
 CMD ["python", "-m", "uvicorn", "main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "3001", \
-     "--workers", "1"]
+    "--host", "0.0.0.0", \
+    "--port", "3001", \
+    "--workers", "1"]
