@@ -1,52 +1,44 @@
-FROM python:3.11-slim AS deps
+FROM nvidia/cuda:12.9.2-cudnn-devel-ubuntu24.04 AS build
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential curl git \
+      python3 \
+      python3-pip \
+      python3-venv \
+      git \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --upgrade pip
+WORKDIR /app
+
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir torch torchvision torchaudio \
+      --index-url https://download.pytorch.org/whl/cu128 \
+    && pip install --no-cache-dir -r requirements.txt
+
+FROM nvidia/cuda:12.9.2-cudnn-runtime-ubuntu24.04 AS runtime
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 \
+      libgomp1 \
+      libgl1 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY backend/requirements.txt ./requirements.txt
-RUN grep -v "^torch" requirements.txt > requirements.clean.txt
+COPY --from=build /app/venv /app/venv
+COPY . .
 
-RUN pip install --no-cache-dir -r requirements.clean.txt
+ENV PATH="/app/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-RUN pip install --no-cache-dir \
-        torch==2.3.1+cpu \
-        torchvision==0.18.1+cpu \
-        --index-url https://download.pytorch.org/whl/cpu
-
-FROM deps AS final
-
-LABEL org.opencontainers.image.title="Quadtrix Python Backend"
-LABEL org.opencontainers.image.description="FastAPI + PyTorch inference layer"
-LABEL org.opencontainers.image.source="https://github.com/Eamon2009/Quadtrix.cpp"
-
-WORKDIR /app
-COPY backend/ ./backend/
-COPY engine/  ./engine/
-RUN mkdir -p /models /app/engine/logs
-
-VOLUME ["/models"]
-
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    TORCH_CHECKPOINT_PATH=/models/best_model.pt \
-    API_PORT=3001 \
-    LOG_LEVEL=INFO \
-    CORS_ORIGINS=http://localhost:5173
-
-EXPOSE 3001
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:3001/api/health || exit 1
-
-WORKDIR /app/backend
-CMD ["python", "-m", "uvicorn", "main:app", \
-    "--host", "0.0.0.0", \
-    "--port", "3001", \
-    "--workers", "1"]
+# Use the venv python directly — avoids PATH resolution ambiguity
+ENTRYPOINT ["/app/venv/bin/python3", "engine/main.py"]
