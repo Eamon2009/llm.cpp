@@ -1,18 +1,5 @@
-ARG CUDA=0
+FROM python:3.11-slim AS deps
 
-FROM python:3.11-slim AS base-0
-
-FROM nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04 AS base-1
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.11 python3.11-dev python3-pip curl git build-essential \
-    && ln -sf python3.11 /usr/bin/python3 \
-    && ln -sf python3.11 /usr/bin/python \
-    && pip3 install --upgrade pip \
-    && rm -rf /var/lib/apt/lists/*
-
-
-FROM base-${CUDA} AS deps
-ARG CUDA=0
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -23,26 +10,15 @@ RUN pip install --upgrade pip
 
 WORKDIR /app
 
-# Copy requirements but REMOVE bare torch line — we install it explicitly below
 COPY backend/requirements.txt ./requirements.txt
 RUN grep -v "^torch" requirements.txt > requirements.clean.txt
 
-# Install everything except torch
 RUN pip install --no-cache-dir -r requirements.clean.txt
 
-# Install correct torch based on CUDA arg
-RUN if [ "$CUDA" = "1" ]; then \
-        pip install --no-cache-dir \
-            torch==2.3.1 \
-            torchvision==0.18.1 \
-            --index-url https://download.pytorch.org/whl/cu121; \
-    else \
-        pip install --no-cache-dir \
-            torch==2.3.1+cpu \
-            torchvision==0.18.1+cpu \
-            --index-url https://download.pytorch.org/whl/cpu; \
-    fi
-
+RUN pip install --no-cache-dir \
+        torch==2.3.1+cpu \
+        torchvision==0.18.1+cpu \
+        --index-url https://download.pytorch.org/whl/cpu
 
 FROM deps AS final
 
