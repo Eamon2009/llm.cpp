@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { SettingsPanel } from "../panels/SettingsPanel";
 import { StatsPanel } from "../panels/StatsPanel";
+import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 
 interface AppLayoutProps {
@@ -10,8 +11,17 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   return (
-    <div className="flex h-screen overflow-hidden bg-base text-[var(--text-primary)]">
-      <main className="flex min-w-0 flex-1 flex-col">
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        overflow: "hidden",
+        background: "var(--bg-base)",
+        color: "var(--text-primary)",
+      }}
+    >
+      <Sidebar />
+      <main style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
         <Topbar />
         {children}
       </main>
