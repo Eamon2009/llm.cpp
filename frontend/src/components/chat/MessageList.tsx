@@ -1,5 +1,6 @@
-import { useAutoScroll } from "../../hooks/useAutoScroll";
+import { useRef } from "react";
 import type { Message } from "../../types";
+import { useAutoScroll } from "../../hooks/useAutoScroll";
 import { MessageRow } from "./MessageRow";
 
 interface MessageListProps {
@@ -7,13 +8,25 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages }: MessageListProps) {
-  const scrollRef = useAutoScroll<HTMLDivElement>(messages.length);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  useAutoScroll(bottomRef, messages);
+
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-8 md:px-8 md:py-10" ref={scrollRef}>
-      <div className="mx-auto flex max-w-4xl flex-col gap-8">
+    <div
+      style={{
+        flex: 1,
+        overflowY: "auto",
+        padding: "24px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 20,
+      }}
+    >
+      <div style={{ maxWidth: 780, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
         {messages.map((message) => (
           <MessageRow key={message.id} message={message} />
         ))}
+        <div ref={bottomRef} />
       </div>
     </div>
   );
