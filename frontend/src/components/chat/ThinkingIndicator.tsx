@@ -1,12 +1,28 @@
 export function ThinkingIndicator() {
   return (
-    <div className="flex items-center gap-2 text-[var(--text-secondary)]">
-      <span>Quadtrix is thinking</span>
-      <span className="flex gap-1">
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--text-secondary)]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--text-secondary)] [animation-delay:120ms]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--text-secondary)] [animation-delay:240ms]" />
+    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)" }}>
+      <span style={{ fontSize: 12 }}>Generating</span>
+      <span style={{ display: "flex", gap: 3 }}>
+        {[0, 120, 240].map((delay) => (
+          <span
+            key={delay}
+            style={{
+              display: "inline-block",
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: "var(--accent)",
+              animation: `bounce 1s ease-in-out ${delay}ms infinite`,
+            }}
+          />
+        ))}
       </span>
+      <style>{`
+        @keyframes bounce {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+          40% { transform: translateY(-4px); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
