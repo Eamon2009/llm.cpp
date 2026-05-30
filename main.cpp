@@ -103,6 +103,22 @@ static std::string choose_output_path(const std::string &requested_path,
       return exe_relative;
 }
 
+// sample N tokens from the model and print them
+static void sample_tokens(GPTLanguageModel &model,
+                          DataLoader &dl,
+                          int n_tokens)
+{
+      std::vector<int> ctx = {0};
+      for (int i = 0; i < n_tokens; ++i)
+      {
+            ctx = model.generate(ctx, 1);
+            std::cout << dl.decode({ctx.back()}) << std::flush;
+            if ((int)ctx.size() > BLOCK_SIZE)
+                  ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
+      }
+      std::cout << "\n";
+}
+
 // estimate loss — no gradients, training=false
 static float estimate_loss(GPTLanguageModel &model,
                            DataLoader &dl,
@@ -184,10 +200,7 @@ int main(int argc, char *argv[])
       std::signal(SIGINT, sig_handler);
 
       // Banner
-      std::cout << std::string(60, '=') << "\n";
       std::cout << " Quadtrix v1.0 (C++)\n";
-      std::cout << std::string(60, '=') << "\n";
-      std::cout << "\n[INFO] Starting at: " << now_str() << "\n";
 
       std::string data_path = DEFAULT_CLEANED_PATH;
       const char *env_data_path = std::getenv(DATA_PATH_ENV_VAR.c_str());
@@ -219,17 +232,6 @@ int main(int argc, char *argv[])
       data_path = choose_existing_path(data_path, argv[0]);
       model_path = choose_output_path(model_path, argv[0]);
 
-      // Config print
-      std::cout << "\n[CONFIG] Hyperparameters:\n";
-      std::cout << "         batch_size=" << BATCH_SIZE
-                << "  block_size=" << BLOCK_SIZE << "\n";
-      std::cout << "         max_iters=" << MAX_ITERS
-                << "  learning_rate=" << LEARNING_RATE << "\n";
-      std::cout << "         n_embd=" << N_EMBD
-                << "  n_head=" << N_HEAD
-                << "  n_layer=" << N_LAYER
-                << "  dropout=" << DROPOUT << "\n";
-
       //  Data
       DataLoader dl;
       try
@@ -247,13 +249,12 @@ int main(int argc, char *argv[])
       GPTLanguageModel model(dl.vocab_size, N_EMBD, N_HEAD, N_LAYER, BLOCK_SIZE, SEED);
 
       long n_params = model.num_params();
-      std::cout << "[MODEL] Parameters  : "
-                << std::fixed << std::setprecision(2)
-                << n_params / 1.0e6f << " M  (" << n_params << " total)\n";
-      std::cout << "[MODEL] Architecture: "
-                << N_LAYER << " layers x "
-                << N_HEAD << " heads x "
-                << N_EMBD << " embedding dim\n";
+      std::cout << "max_seq_len: " << BLOCK_SIZE << "\n";
+      std::cout << "vocab_size: " << dl.vocab_size << "\n";
+      std::cout << "num_layers: " << N_LAYER << "\n";
+      std::cout << "num_heads: " << N_HEAD << "\n";
+      std::cout << "channels: " << N_EMBD << "\n";
+      std::cout << "num_parameters: " << n_params << "\n";
 
       // chat mode
       if (chat_mode)
@@ -268,9 +269,8 @@ int main(int argc, char *argv[])
             }
 
             model.load(model_path);
-            std::cout << "[CHAT]  Weights loaded from " << model_path << "\n";
-            std::cout << "[CHAT]  Max tokens per reply: " << chat_tokens
-                      << "  (override with --chat-tokens N)\n";
+            std::cout << "weights: " << model_path << "\n";
+            std::cout << "max_tokens: " << chat_tokens << "\n";
 
             run_chat(model, dl, chat_tokens);
             return 0;
@@ -289,10 +289,7 @@ int main(int argc, char *argv[])
             }
 
             model.load(model_path);
-            std::cout << "\n"
-                      << std::string(60, '-') << "\n";
-            std::cout << "  Quadtrix OUTPUT  (Ctrl+C to stop)\n";
-            std::cout << std::string(60, '-') << "\n\n";
+            std::cout << "\ngenerating:\n";
             std::vector<int> ctx = {0};
             while (!g_interrupted)
             {
@@ -301,7 +298,7 @@ int main(int argc, char *argv[])
                   if ((int)ctx.size() > BLOCK_SIZE)
                         ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
             }
-            std::cout << "\n\n[Stopped by user]\n";
+            std::cout << "\n";
             return 0;
       }
 
@@ -312,114 +309,78 @@ int main(int argc, char *argv[])
       std::mt19937 rng(SEED);
 
       // training loop
-      std::cout << "\n"
-                << std::string(60, '-') << "\n";
-      std::cout << "  TRAINING  ("
-                << MAX_ITERS << " iters, eval every "
-                << EVAL_INTERVAL << ")\n";
-      std::cout << std::string(60, '-') << "\n";
 
       float best_val_loss = 1e30f;
+      float last_val_loss = 0.0f;
       double train_start = wall_secs();
-      double last_eval_time = train_start; // ← tracks time of previous eval
 
-      for (int iter = 0; iter <= MAX_ITERS && !g_interrupted; ++iter)
+      // compute initial val loss before training
       {
+            std::mt19937 init_rng(SEED);
+            last_val_loss = estimate_loss(model, dl, "val", init_rng);
+      }
 
-            // Periodic eval checkpoint
-            if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
-            {
-                  double now = wall_secs();
-                  double elapsed = now - train_start;
+      for (int iter = 1; iter <= MAX_ITERS && !g_interrupted; ++iter)
+      {
+            double step_start = wall_secs();
 
-                  // ms per training step since the last eval window
-                  double window_secs = now - last_eval_time;
-                  int steps_in_win = (iter == 0) ? 1 : EVAL_INTERVAL;
-                  double ms_per_step = window_secs * 1000.0 / steps_in_win;
-
-                  // tokens processed per second
-                  long toks_in_win = (long)BATCH_SIZE * BLOCK_SIZE * steps_in_win;
-                  int tok_per_sec = (window_secs > 0.0)
-                                        ? (int)(toks_in_win / window_secs)
-                                        : 0;
-
-                  last_eval_time = now; // reset window
-
-                  float tl = estimate_loss(model, dl, "train", rng);
-                  float vl = estimate_loss(model, dl, "val", rng);
-
-                  bool better = vl < best_val_loss;
-                  if (better)
-                  {
-                        best_val_loss = vl;
-                        model.save(model_path);
-                  }
-
-                  // ── new log line ─────────────────────────────────────────────
-                  std::cout
-                      << "step "
-                      << std::setw(5) << iter << "/" << MAX_ITERS
-                      << " | loss "
-                      << std::fixed << std::setprecision(6) << tl
-                      << " | val "
-                      << std::fixed << std::setprecision(6) << vl
-                      << " | lr "
-                      << std::scientific << std::setprecision(2) << (float)LEARNING_RATE
-                      << " | "
-                      << std::fixed << std::setprecision(2) << ms_per_step << " ms"
-                      << " | " << tok_per_sec << " tok/s"
-                      << (better ? "  *best*" : "")
-                      << "\n";
-                  std::cout.flush();
-
-                  if (iter == MAX_ITERS)
-                        break;
-            }
-
-            // Sample training batch
+            // train step
             std::pair<std::vector<int>, std::vector<int>> batch =
                 dl.get_batch("train", BATCH_SIZE, BLOCK_SIZE, rng);
 
-            // Forward — saves all intermediate activations
             SavedForward saved = forward_save(model,
                                               batch.first, BATCH_SIZE, BLOCK_SIZE,
                                               batch.second, /*training=*/true);
 
-            //  Backward — exact analytical gradients
+            float batch_loss = model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE,
+                                             batch.second, false)
+                                   .second;
+
             Grads grads = backward(model, saved);
-
-            // AdamW parameter update
             apply_grads(model, grads, opt);
+
+            double step_ms = (wall_secs() - step_start) * 1000.0;
+            int tok_per_sec = (step_ms > 0.0)
+                                  ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0))
+                                  : 0;
+
+            // every EVAL_INTERVAL steps: compute val, save if best, sample
+            bool better = false;
+            if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
+            {
+                  last_val_loss = estimate_loss(model, dl, "val", rng);
+                  if (last_val_loss < best_val_loss)
+                  {
+                        best_val_loss = last_val_loss;
+                        model.save(model_path);
+                        better = true;
+                  }
+            }
+
+            // print every step
+            std::cout
+                << "step"
+                << std::setw(5) << iter << "/" << MAX_ITERS
+                << " | loss "
+                << std::fixed << std::setprecision(6) << batch_loss
+                << " | val "
+                << std::fixed << std::setprecision(6) << last_val_loss
+                << " | lr "
+                << std::scientific << std::setprecision(2) << (float)LEARNING_RATE
+                << " | "
+                << std::fixed << std::setprecision(2) << step_ms << " ms"
+                << " | " << tok_per_sec << " tok/s"
+                << (better ? "  *best*" : "")
+                << "\n";
+            std::cout.flush();
+
+            // sample after every eval window
+            if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
+            {
+                  std::cout << "generating:\n";
+                  sample_tokens(model, dl, iter == MAX_ITERS ? 10000 : 150);
+            }
       }
 
-      double total = wall_secs() - train_start;
-      std::cout << "\n[DONE]  Training finished in "
-                << std::fixed << std::setprecision(1) << total << "s ("
-                << total / 60.0 << " min)  |  Best val loss: "
-                << std::setprecision(4) << best_val_loss << "\n";
-      std::cout << "[SAVE]  Best weights saved to " << model_path << "\n";
-
-      //  Continuous generation
-      std::cout << "\n"
-                << std::string(60, '-') << "\n";
-      std::cout << "  MODEL OUTPUT  (Ctrl+C to stop)\n";
-      std::cout << std::string(60, '-') << "\n\n";
-
-      model.load(model_path);
-      model.rng = std::mt19937(SEED + 42);
-
-      std::vector<int> ctx = {0};
-      while (!g_interrupted)
-      {
-            ctx = model.generate(ctx, 1);
-            std::cout << dl.decode({ctx.back()}) << std::flush;
-            if ((int)ctx.size() > BLOCK_SIZE)
-                  ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
-      }
-
-      std::cout << "\n\n[Stopped by user]\n";
-      std::cout << "[TOTAL] Wall-clock: "
-                << std::fixed << std::setprecision(1)
-                << (wall_secs() - train_start) << "s\n";
       return 0;
 }
