@@ -1,5 +1,9 @@
 # Quadtrix.cpp
 
+<p align="center">
+  <img width="785" height="261" alt="image" src="https://github.com/user-attachments/assets/7bd2d8c6-d1e3-4ca0-96c0-0161d3cf235a" />
+</p>
+
 A local large language model with a modular, multi-path execution architecture. Train, run inference, and serve a chat interface — all from a single repository, across bare-metal C++, PyTorch, and a React frontend.
 
 > Full technical reference: [docs](https://eamon2009.github.io/LLMs/)
