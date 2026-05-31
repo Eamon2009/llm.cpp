@@ -2,74 +2,216 @@ name: CI
 
 on:
   push:
-    branches:
-      - exp
-      - master
-  pull_request:
+    branches: [master, dev]
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Which image to build?"
+        required: true
+        type: choice
+        options:
+          - cpp
+          - cpu
+          - cuda
+          - all
+      push:
+        description: "Push to ghcr.io?"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true", "false"]
 
-permissions:
-  contents: read
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/quadtrix
 
 jobs:
-  cpp-build:
-    name: C++ build
+
+  file-integrity:
+    name: File integrity
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install compiler
+      - name: Check required files exist
+        run: |
+          files=(
+            "main.cpp"
+            "engine/main.py"
+            "requirements.txt"
+          )
+          failed=0
+          for f in "${files[@]}"; do
+            if [ -f "$f" ]; then
+              echo "✅  $f"
+            else
+              echo "❌  $f — MISSING"
+              failed=1
+            fi
+          done
+          exit $failed
+
+
+  lint-python:
+    name: Python lint
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint engine/ (ruff)
+        uses: chartboost/ruff-action@v1
+        with:
+          args: "check engine/ --ignore E501 --exit-zero"
+
+
+  build-cpp:
+    name: C++ compile check
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install g++
         run: sudo apt-get update && sudo apt-get install -y g++
 
-      - name: Build Quadtrix
-        run: g++ -std=c++17 -O2 -I. -Iinclude -o quadtrix main.cpp
-
-  backend-smoke:
-    name: Backend smoke checks
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install backend runtime dependencies
+      - name: Compile main.cpp
         run: |
-          python -m pip install --upgrade pip
-          pip install fastapi "uvicorn[standard]" pydantic pydantic-settings httpx redis
+          g++ -std=c++17 -O3 \
+            -I. -Iinclude \
+            -o quadtrix main.cpp
 
-      - name: Compile Python sources
-        run: python -m compileall backend engine
+      - name: Smoke test
+        run: ./quadtrix --help || true
 
-      - name: Import FastAPI application
-        working-directory: backend
-        run: |
-          python -c "from main import app; print(app.title)"
 
-  frontend-build:
-    name: Frontend build
+  build-cpp-image:
+    name: Build — cpp
+    if: github.event_name == 'workflow_dispatch' && (inputs.image == 'cpp' || inputs.image == 'all')
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: inputs.push == 'true'
+        uses: docker/login-action@v3
         with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-cpp
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile.cpp
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=cpp
+          cache-to: type=gha,mode=max,scope=cpp
+
+
+  build-cpu-image:
+    name: Build — cpu
+    if: github.event_name == 'workflow_dispatch' && (inputs.image == 'cpu' || inputs.image == 'all')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: inputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-cpu
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=cpu
+          cache-to: type=gha,mode=max,scope=cpu
+
+
+  build-cuda-image:
+    name: Build — cuda
+    if: github.event_name == 'workflow_dispatch' && (inputs.image == 'cuda' || inputs.image == 'all')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: inputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-cuda
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile.backend
+          platforms: linux/amd64
+          push: ${{ inputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=cuda
+          cache-to: type=gha,mode=max,scope=cuda

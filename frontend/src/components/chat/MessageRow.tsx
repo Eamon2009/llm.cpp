@@ -27,37 +27,96 @@ export function MessageRow({ message }: MessageRowProps) {
   return (
     <motion.div
       animate={{ opacity: 1, y: 0 }}
-      className={`group flex w-full gap-3 ${isUser ? "justify-end" : "justify-start"}`}
       initial={{ opacity: 0, y: 6 }}
-      transition={{ duration: 0.2 }}
+      transition={{ duration: 0.18 }}
+      className="group"
+      style={{
+        display: "flex",
+        width: "100%",
+        gap: 12,
+        justifyContent: isUser ? "flex-end" : "flex-start",
+        alignItems: "flex-start",
+      }}
     >
       {!isUser && <MessageAvatar role={message.role} />}
-      <div className={`max-w-[min(760px,calc(100vw-48px))] ${isUser ? "items-end" : "items-start"} flex flex-col gap-1`}>
-        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--text-muted)]">
-          <span>{isUser ? "You" : "Quadtrix"}</span>
+
+      <div
+        style={{
+          maxWidth: "min(680px, calc(100vw - 80px))",
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          alignItems: isUser ? "flex-end" : "flex-start",
+        }}
+      >
+        {/* Meta row */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 11,
+            color: "var(--text-muted)",
+          }}
+        >
+          <span style={{ fontWeight: 500 }}>{isUser ? "You" : "Quadtrix"}</span>
           <span>{formatRelativeTime(message.created_at)}</span>
           {!isUser && !message.pending && (
             <button
-              className="hidden rounded px-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] group-hover:inline"
+              className="group-hover:opacity-100"
               onClick={copyText}
               type="button"
+              style={{
+                opacity: 0,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: copied ? "var(--status-online)" : "var(--text-muted)",
+                fontSize: 11,
+                padding: "0 2px",
+                transition: "opacity 0.12s, color 0.12s",
+              }}
             >
-              {copied ? "Copied" : "Copy"}
+              {copied ? "✓ Copied" : "Copy"}
             </button>
           )}
         </div>
+
+        {/* Bubble */}
         <div
-          className={`rounded-lg border px-4 py-3 text-sm leading-7 ${
-            isUser
-              ? "border-[var(--border-muted)] bg-surface text-[var(--text-primary)]"
+          style={{
+            borderRadius: 10,
+            padding: "10px 14px",
+            fontSize: 13,
+            lineHeight: 1.7,
+            ...(isUser
+              ? {
+                  background: "var(--bg-elevated)",
+                  border: "1px solid var(--border-muted)",
+                  color: "var(--text-primary)",
+                }
               : message.error
-                ? "border-red-500/20 bg-red-500/10 font-sans text-red-200"
-                : "border-[var(--border-subtle)] bg-[#0d0d0d] font-mono text-[var(--text-primary)]"
-          }`}
+              ? {
+                  background: "rgba(224,82,82,0.08)",
+                  border: "1px solid rgba(224,82,82,0.2)",
+                  color: "#f87171",
+                }
+              : {
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--text-primary)",
+                  fontFamily: "var(--font-mono)",
+                }),
+          }}
         >
-          {message.pending ? <ThinkingIndicator /> : <span className="whitespace-pre-wrap">{message.text}</span>}
+          {message.pending ? (
+            <ThinkingIndicator />
+          ) : (
+            <span style={{ whiteSpace: "pre-wrap" }}>{message.text}</span>
+          )}
         </div>
       </div>
+
       {isUser && <MessageAvatar role={message.role} />}
     </motion.div>
   );

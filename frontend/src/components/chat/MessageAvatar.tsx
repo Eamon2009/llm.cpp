@@ -6,15 +6,48 @@ interface MessageAvatarProps {
 
 export function MessageAvatar({ role }: MessageAvatarProps) {
   const isUser = role === "user";
+
+  if (isUser) {
+    return (
+      <div
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: "50%",
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-muted)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 11,
+          fontWeight: 600,
+          color: "var(--text-secondary)",
+          flexShrink: 0,
+        }}
+      >
+        U
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-xs font-semibold ${
-        isUser
-          ? "border-[var(--border-muted)] bg-elevated text-[var(--text-primary)]"
-          : "border-[var(--border-muted)] bg-surface font-mono text-[var(--text-primary)]"
-      }`}
+      style={{
+        width: 30,
+        height: 30,
+        borderRadius: "50%",
+        background: "linear-gradient(135deg, #4f8ef7 0%, #2563eb 100%)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 12,
+        fontWeight: 700,
+        color: "#fff",
+        flexShrink: 0,
+        boxShadow: "0 2px 8px rgba(79,142,247,0.3)",
+      }}
     >
-      {isUser ? "You" : "Q"}
+      Q
     </div>
   );
 }

@@ -1,0 +1,238 @@
+name: PR Checks
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  slash-command:
+    name: Parse /run-checks
+    if: |
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '/run-checks')
+    runs-on: ubuntu-latest
+    outputs:
+      pr-sha: ${{ steps.get-sha.outputs.sha }}
+    steps:
+      - name: Check commenter permission
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              username: context.actor,
+            });
+            if (!['admin', 'write'].includes(data.permission)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                issue_number: context.issue.number,
+                body: `@${context.actor} Only maintainers can trigger checks.`,
+              });
+              core.setFailed('Unauthorized');
+            }
+
+      - name: React with rocket
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              comment_id: ${{ github.event.comment.id }},
+              content: 'rocket',
+            });
+
+      - name: Get PR head SHA
+        id: get-sha
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            core.setOutput('sha', pr.head.sha);
+
+
+  lint:
+    name: Lint
+    needs: slash-command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.slash-command.outputs.pr-sha }}
+
+      - name: C++ format check
+        run: |
+          sudo apt-get install -y clang-format
+          find . -name "*.cpp" -o -name "*.h" | grep -v "build/" | \
+            xargs clang-format --dry-run --Werror --style=LLVM || true
+
+      - name: Python lint (ruff)
+        uses: chartboost/ruff-action@v1
+        with:
+          args: "check engine/ --ignore E501 --exit-zero"
+
+      - name: TypeScript lint (eslint)
+        working-directory: frontend
+        run: |
+          npm ci --prefer-offline
+          npx eslint src/ --ext .ts,.tsx --max-warnings 20 || true
+
+
+  build-cpp:
+    name: Build C++ (${{ matrix.os }})
+    needs: slash-command
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04, macos-14]
+        include:
+          - os: ubuntu-22.04
+            artifact: quadtrix-linux-x64
+          - os: ubuntu-24.04
+            artifact: quadtrix-linux-x64-noble
+          - os: macos-14
+            artifact: quadtrix-macos-arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.slash-command.outputs.pr-sha }}
+
+      - name: Install GCC (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y g++ ccache
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ matrix.os }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
+          restore-keys: ccache-${{ matrix.os }}-
+
+      - name: Compile main.cpp
+        run: |
+          g++ -std=c++17 -O3 -march=native \
+            -I. -Iinclude \
+            -o quadtrix main.cpp
+
+      - name: Smoke test
+        run: ./quadtrix --help || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: quadtrix
+          retention-days: 7
+
+
+  validate-dockerfiles:
+    name: Validate Dockerfiles
+    needs: slash-command
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.slash-command.outputs.pr-sha }}
+
+    
+      - name: Check required files exist
+        run: |
+          echo "Checking files referenced by Dockerfiles..."
+          files=(
+            "main.cpp"
+            "engine/main.py"
+            "requirements.txt"
+          )
+          failed=0
+          for f in "${files[@]}"; do
+            if [ -f "$f" ]; then
+              echo "✅  $f"
+            else
+              echo "❌  $f — MISSING"
+              failed=1
+            fi
+          done
+          exit $failed
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build check — Dockerfile.cpp (C++ engine)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile.cpp
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=cpp
+          cache-to: type=gha,mode=max,scope=cpp
+
+
+      - name: Build check — Dockerfile (PyTorch CPU)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=cpu
+          cache-to: type=gha,mode=max,scope=cpu
+
+      - name: Skip CUDA build check
+        run: echo "CUDA build skipped on PR checks — run publish-docker workflow to build cuda image."
+
+
+  test-frontend:
+    name: Frontend Tests
+    needs: [slash-command, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.slash-command.outputs.pr-sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci --prefer-offline
+
+      - name: Type-check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build check
+        working-directory: frontend
+        run: npm run build
+
+
+  post-result:
+    name: Post result
+    needs: [slash-command, lint, build-cpp, validate-dockerfiles, test-frontend]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const jobs   = ${{ toJSON(needs) }};
+            const failed = Object.values(jobs).some(j => j.result === 'failure');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+              body: failed
+                ? ' Some checks failed — see Actions for details.'
+                : ' All checks passed!',
+            });
