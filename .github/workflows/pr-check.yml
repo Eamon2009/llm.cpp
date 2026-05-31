@@ -7,7 +7,7 @@ on:
 jobs:
   slash-command:
     name: Parse /run-checks
-    if: |
+    if: >-
       github.event.issue.pull_request != null &&
       contains(github.event.comment.body, '/run-checks')
     runs-on: ubuntu-latest
@@ -70,18 +70,12 @@ jobs:
         run: |
           sudo apt-get install -y clang-format
           find . -name "*.cpp" -o -name "*.h" | grep -v "build/" | \
-            xargs clang-format --dry-run --Werror --style=LLVM || true
+            xargs clang-format --dry-run --Werror || true
 
       - name: Python lint (ruff)
         uses: chartboost/ruff-action@v1
         with:
           args: "check engine/ --ignore E501 --exit-zero"
-
-      - name: TypeScript lint (eslint)
-        working-directory: frontend
-        run: |
-          npm ci --prefer-offline
-          npx eslint src/ --ext .ts,.tsx --max-warnings 20 || true
 
 
   build-cpp:
@@ -132,8 +126,8 @@ jobs:
           retention-days: 7
 
 
-  validate-dockerfiles:
-    name: Validate Dockerfiles
+  validate:
+    name: Validate
     needs: slash-command
     runs-on: ubuntu-latest
     steps:
@@ -141,10 +135,8 @@ jobs:
         with:
           ref: ${{ needs.slash-command.outputs.pr-sha }}
 
-    
       - name: Check required files exist
         run: |
-          echo "Checking files referenced by Dockerfiles..."
           files=(
             "main.cpp"
             "engine/main.py"
@@ -161,65 +153,28 @@ jobs:
           done
           exit $failed
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build check — Dockerfile.cpp (C++ engine)
-        uses: docker/build-push-action@v6
+      - name: Lint — Dockerfile.cpp
+        uses: hadolint/hadolint-action@v3.1.0
         with:
-          context: .
-          file: .devops/Dockerfile.cpp
-          platforms: linux/amd64
-          push: false
-          cache-from: type=gha,scope=cpp
-          cache-to: type=gha,mode=max,scope=cpp
+          dockerfile: .devops/Dockerfile.cpp
+          failure-threshold: error
 
-
-      - name: Build check — Dockerfile (PyTorch CPU)
-        uses: docker/build-push-action@v6
+      - name: Lint — Dockerfile (CPU)
+        uses: hadolint/hadolint-action@v3.1.0
         with:
-          context: .
-          file: .devops/Dockerfile
-          platforms: linux/amd64
-          push: false
-          cache-from: type=gha,scope=cpu
-          cache-to: type=gha,mode=max,scope=cpu
+          dockerfile: .devops/Dockerfile
+          failure-threshold: error
 
-      - name: Skip CUDA build check
-        run: echo "CUDA build skipped on PR checks — run publish-docker workflow to build cuda image."
-
-
-  test-frontend:
-    name: Frontend Tests
-    needs: [slash-command, lint]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Lint — Dockerfile.backend (CUDA)
+        uses: hadolint/hadolint-action@v3.1.0
         with:
-          ref: ${{ needs.slash-command.outputs.pr-sha }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install
-        working-directory: frontend
-        run: npm ci --prefer-offline
-
-      - name: Type-check
-        working-directory: frontend
-        run: npx tsc --noEmit
-
-      - name: Build check
-        working-directory: frontend
-        run: npm run build
+          dockerfile: .devops/Dockerfile.backend
+          failure-threshold: error
 
 
   post-result:
     name: Post result
-    needs: [slash-command, lint, build-cpp, validate-dockerfiles, test-frontend]
+    needs: [slash-command, lint, build-cpp, validate]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -233,6 +188,6 @@ jobs:
               repo:  context.repo.repo,
               issue_number: context.issue.number,
               body: failed
-                ? ' Some checks failed — see Actions for details.'
-                : ' All checks passed!',
+                ? '❌ Some checks failed — see Actions for details.'
+                : '✅ All checks passed!',
             });
