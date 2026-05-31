@@ -56,6 +56,23 @@ jobs:
             });
             core.setOutput('sha', pr.head.sha);
 
+      - name: Set checks to pending
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = '${{ steps.get-sha.outputs.sha }}';
+            const checks = ['Lint', 'Build C++ (ubuntu-22.04)', 'Build C++ (ubuntu-24.04)', 'Build C++ (macos-14)', 'Validate'];
+            for (const check of checks) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo:  context.repo.repo,
+                sha,
+                state: 'pending',
+                context: check,
+                description: 'Waiting...',
+              });
+            }
+
 
   lint:
     name: Lint
@@ -76,6 +93,20 @@ jobs:
         uses: chartboost/ruff-action@v1
         with:
           args: "check engine/ --ignore E501 --exit-zero"
+
+      - name: Report status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              sha:   '${{ needs.slash-command.outputs.pr-sha }}',
+              state: '${{ job.status }}' === 'success' ? 'success' : 'failure',
+              context: 'Lint',
+              description: '${{ job.status }}',
+            });
 
 
   build-cpp:
@@ -125,6 +156,20 @@ jobs:
           path: quadtrix
           retention-days: 7
 
+      - name: Report status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              sha:   '${{ needs.slash-command.outputs.pr-sha }}',
+              state: '${{ job.status }}' === 'success' ? 'success' : 'failure',
+              context: 'Build C++ (${{ matrix.os }})',
+              description: '${{ job.status }}',
+            });
+
 
   validate:
     name: Validate
@@ -170,6 +215,20 @@ jobs:
         with:
           dockerfile: .devops/Dockerfile.backend
           failure-threshold: error
+
+      - name: Report status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              sha:   '${{ needs.slash-command.outputs.pr-sha }}',
+              state: '${{ job.status }}' === 'success' ? 'success' : 'failure',
+              context: 'Validate',
+              description: '${{ job.status }}',
+            });
 
 
   post-result:
