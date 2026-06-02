@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: [master]
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       image:
@@ -120,26 +118,6 @@ jobs:
           name: quadtrix-macos-arm64
           path: quadtrix-macos-arm64.tar.gz
           retention-days: 7
-
-  release:
-    name: Publish release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-binary-linux, build-binary-macos]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist/
-
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/quadtrix-linux-amd64/quadtrix
-            dist/quadtrix-macos-arm64/quadtrix-macos-arm64.tar.gz
 
   build-cpp-image:
     name: "Build -- cpp (C++ engine - linux/amd64 + arm64)"
