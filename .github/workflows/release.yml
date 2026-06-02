@@ -158,7 +158,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-
+  # Optional — cancelling this job will not block the release
   build-macos-arm64:
     name: macOS arm64 CPU
     needs: prepare-release
@@ -205,16 +205,13 @@ jobs:
       - prepare-release
       - build-linux
       - build-windows
-      - build-macos-x64
       - build-macos-arm64
     runs-on: ubuntu-latest
-    
     if: |
       always() &&
       needs.prepare-release.result == 'success' &&
       needs.build-linux.result == 'success' &&
       needs.build-windows.result == 'success' &&
-      needs.build-macos-x64.result == 'success' &&
       (
         needs.build-macos-arm64.result == 'success' ||
         needs.build-macos-arm64.result == 'cancelled' ||
