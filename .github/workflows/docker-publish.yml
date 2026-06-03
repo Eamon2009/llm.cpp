@@ -1,29 +1,31 @@
 name: Docker Images
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       image:
-        description: "Which image to build? (cpp=C++ engine, cpu=PyTorch CPU, cuda=PyTorch CUDA, all=all three)"
+        description: "Image variant to build"
         required: true
         type: choice
         options:
           - cpp
           - cpu
           - cuda
+          - frontend
           - all
       version:
         description: "Optional image tag for manual runs"
         required: false
       push_image:
-        description: "Push to ghcr.io?"
+        description: "Push to ghcr.io"
         required: true
         default: "true"
         type: choice
         options: ["true", "false"]
+
+concurrency:
+  group: docker-images-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -31,8 +33,8 @@ env:
 
 jobs:
   build-cpp-image:
-    name: "Build -- cpp (C++ engine - linux/amd64 + arm64)"
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.image == 'cpp' || inputs.image == 'all')) }}
+    name: Docker cpp
+    if: ${{ inputs.image == 'cpp' || inputs.image == 'all' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,10 +46,10 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Set lowercase image prefix
-        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> $GITHUB_ENV
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
-        if: ${{ github.event_name == 'push' || inputs.push_image == 'true' }}
+        if: ${{ inputs.push_image == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -60,27 +62,26 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}-cpp
           tags: |
-            type=ref,event=branch
+            type=ref,event=tag
             type=sha,prefix=sha-
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.version != '' }}
-            type=semver,pattern={{version}},enable=${{ github.event_name == 'push' }}
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=raw,value=latest,enable=${{ inputs.push_image == 'true' }}
 
-      - name: Build & push
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: .devops/Dockerfile.cpp
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' || inputs.push_image == 'true' }}
+          push: ${{ inputs.push_image == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=cpp
           cache-to: type=gha,mode=max,scope=cpp
 
   build-cpu-image:
-    name: "Build -- cpu (PyTorch CPU - linux/amd64 + arm64)"
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.image == 'cpu' || inputs.image == 'all')) }}
+    name: Docker cpu
+    if: ${{ inputs.image == 'cpu' || inputs.image == 'all' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -92,10 +93,10 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Set lowercase image prefix
-        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> $GITHUB_ENV
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
-        if: ${{ github.event_name == 'push' || inputs.push_image == 'true' }}
+        if: ${{ inputs.push_image == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -108,27 +109,26 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}-cpu
           tags: |
-            type=ref,event=branch
+            type=ref,event=tag
             type=sha,prefix=sha-
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.version != '' }}
-            type=semver,pattern={{version}},enable=${{ github.event_name == 'push' }}
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=raw,value=latest,enable=${{ inputs.push_image == 'true' }}
 
-      - name: Build & push
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: .devops/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' || inputs.push_image == 'true' }}
+          push: ${{ inputs.push_image == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=cpu
           cache-to: type=gha,mode=max,scope=cpu
 
   build-cuda-image:
-    name: "Build -- cuda (PyTorch CUDA - linux/amd64 only)"
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.image == 'cuda' || inputs.image == 'all')) }}
+    name: Docker cuda
+    if: ${{ inputs.image == 'cuda' || inputs.image == 'all' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -139,10 +139,10 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Set lowercase image prefix
-        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> $GITHUB_ENV
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
-        if: ${{ github.event_name == 'push' || inputs.push_image == 'true' }}
+        if: ${{ inputs.push_image == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -155,20 +155,66 @@ jobs:
         with:
           images: ${{ env.IMAGE_PREFIX }}-cuda
           tags: |
-            type=ref,event=branch
+            type=ref,event=tag
             type=sha,prefix=sha-
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.version != '' }}
-            type=semver,pattern={{version}},enable=${{ github.event_name == 'push' }}
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=raw,value=latest,enable=${{ inputs.push_image == 'true' }}
 
-      - name: Build & push
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: .devops/Dockerfile.backend
           platforms: linux/amd64
-          push: ${{ github.event_name == 'push' || inputs.push_image == 'true' }}
+          push: ${{ inputs.push_image == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=cuda
           cache-to: type=gha,mode=max,scope=cuda
+
+  build-frontend-image:
+    name: Docker frontend
+    if: ${{ inputs.image == 'frontend' || inputs.image == 'all' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Set lowercase image prefix
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
+
+      - name: Login to GHCR
+        if: ${{ inputs.push_image == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-frontend
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=sha-
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=raw,value=latest,enable=${{ inputs.push_image == 'true' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile.frontend
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push_image == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
