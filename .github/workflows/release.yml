@@ -45,8 +45,6 @@ jobs:
             os: ubuntu-22.04
           - build: arm64
             os: ubuntu-24.04-arm
-          - build: s390x
-            os: ubuntu-24.04-s390x
     steps:
       - name: Clone
         uses: actions/checkout@v4
@@ -162,9 +160,6 @@ jobs:
           - build: arm64
             arch: arm64
             os: macos-14
-          - build: x64
-            arch: x86_64
-            os: macos-13
     steps:
       - name: Clone
         uses: actions/checkout@v4
@@ -221,11 +216,48 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Write release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          macOS/iOS:
+
+          macOS Apple Silicon (arm64)
+          macOS Apple Silicon (arm64, KleidiAI enabled) DISABLED
+          macOS Intel (x64) SKIPPED
+          iOS XCFramework DISABLED
+
+          Linux:
+
+          Ubuntu x64 (CPU)
+          Ubuntu arm64 (CPU)
+          Ubuntu s390x (CPU) SKIPPED
+          Ubuntu x64 (Vulkan) DISABLED
+          Ubuntu arm64 (Vulkan) DISABLED
+          Ubuntu x64 (ROCm 7.2) DISABLED
+          Ubuntu x64 (OpenVINO) DISABLED
+          Ubuntu x64 (SYCL FP32) DISABLED
+
+          Android:
+
+          Android arm64 (CPU) DISABLED
+
+          Windows:
+
+          Windows x64 (CPU)
+          Windows arm64 (CPU)
+          Windows x64 (CUDA 12) - CUDA 12.4 DLLs DISABLED
+          Windows x64 (CUDA 13) - CUDA 13.3 DLLs DISABLED
+          Windows x64 (Vulkan) DISABLED
+          Windows x64 (SYCL) DISABLED
+          Windows x64 (HIP) DISABLED
+          EOF
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.release-metadata.outputs.tag_name }}
           target_commitish: ${{ github.sha }}
           prerelease: false
+          body_path: release-notes.md
           files: dist/*
-          generate_release_notes: true
