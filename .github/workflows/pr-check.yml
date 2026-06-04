@@ -199,19 +199,19 @@ jobs:
           exit $failed
 
       - name: Lint — Dockerfile.cpp
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: .devops/Dockerfile.cpp
           failure-threshold: error
 
       - name: Lint — Dockerfile (CPU)
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: .devops/Dockerfile
           failure-threshold: error
 
       - name: Lint — Dockerfile.backend (CUDA)
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: .devops/Dockerfile.backend
           failure-threshold: error
