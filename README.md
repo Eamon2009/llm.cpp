@@ -1,4 +1,4 @@
-# Quadtrix.cpp
+# Quadtrix.cpp (llm.cpp)
 
 <h1 align="center">
   <img width="785" height="261" alt="image" src="https://github.com/user-attachments/assets/7bd2d8c6-d1e3-4ca0-96c0-0161d3cf235a" />
