@@ -1,12 +1,10 @@
 name: CI
 
 on:
-  push:
-    branches: [master, dev]
   workflow_dispatch:
     inputs:
       image:
-        description: "Which image to build?"
+        description: "Which image to build? (cpp=C++ engine, cpu=PyTorch CPU, cuda=PyTorch CUDA, all=all three)"
         required: true
         type: choice
         options:
@@ -14,7 +12,7 @@ on:
           - cpu
           - cuda
           - all
-      push:
+      push_image:
         description: "Push to ghcr.io?"
         required: true
         default: "true"
@@ -23,9 +21,9 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/quadtrix
 
 jobs:
+
 
   file-integrity:
     name: File integrity
@@ -44,9 +42,9 @@ jobs:
           failed=0
           for f in "${files[@]}"; do
             if [ -f "$f" ]; then
-              echo "✅  $f"
+              echo "PASS: $f"
             else
-              echo "❌  $f — MISSING"
+              echo "FAIL: $f -- MISSING"
               failed=1
             fi
           done
@@ -66,8 +64,8 @@ jobs:
           args: "check engine/ --ignore E501 --exit-zero"
 
 
-  build-cpp:
-    name: C++ compile check
+  build-binary-linux:
+    name: Binary (ubuntu-latest)
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -85,10 +83,43 @@ jobs:
       - name: Smoke test
         run: ./quadtrix --help || true
 
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: quadtrix-linux-amd64
+          path: quadtrix
+          retention-days: 7
+
+
+  build-binary-macos:
+    name: Binary (macos-14)
+    if: github.event_name == 'push'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile main.cpp
+        run: |
+          g++ -std=c++17 -O3 \
+            -I. -Iinclude \
+            -o quadtrix main.cpp
+
+      - name: Smoke test
+        run: ./quadtrix --help || true
+
+      - name: Package binary
+        run: tar -czf quadtrix-macos-arm64.tar.gz quadtrix
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: quadtrix-macos-arm64
+          path: quadtrix-macos-arm64.tar.gz
+          retention-days: 7
 
   build-cpp-image:
-    name: Build — cpp
-    if: github.event_name == 'workflow_dispatch' && (inputs.image == 'cpp' || inputs.image == 'all')
+    name: "Build -- cpp (C++ engine - linux/amd64 + arm64)"
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.image == 'cpp' || inputs.image == 'all') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -99,8 +130,11 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
+      - name: Set lowercase image prefix
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> $GITHUB_ENV
+
       - name: Login to GHCR
-        if: inputs.push == 'true'
+        if: ${{ inputs.push_image == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -123,7 +157,7 @@ jobs:
           context: .
           file: .devops/Dockerfile.cpp
           platforms: linux/amd64,linux/arm64
-          push: ${{ inputs.push == 'true' }}
+          push: ${{ inputs.push_image == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=cpp
@@ -131,8 +165,8 @@ jobs:
 
 
   build-cpu-image:
-    name: Build — cpu
-    if: github.event_name == 'workflow_dispatch' && (inputs.image == 'cpu' || inputs.image == 'all')
+    name: "Build -- cpu (PyTorch CPU - linux/amd64 + arm64)"
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.image == 'cpu' || inputs.image == 'all') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -143,8 +177,11 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
+      - name: Set lowercase image prefix
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> $GITHUB_ENV
+
       - name: Login to GHCR
-        if: inputs.push == 'true'
+        if: ${{ inputs.push_image == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -167,7 +204,7 @@ jobs:
           context: .
           file: .devops/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ inputs.push == 'true' }}
+          push: ${{ inputs.push_image == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=cpu
@@ -175,8 +212,8 @@ jobs:
 
 
   build-cuda-image:
-    name: Build — cuda
-    if: github.event_name == 'workflow_dispatch' && (inputs.image == 'cuda' || inputs.image == 'all')
+    name: "Build -- cuda (PyTorch CUDA - linux/amd64 only)"
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.image == 'cuda' || inputs.image == 'all') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -186,8 +223,11 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: Set lowercase image prefix
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> $GITHUB_ENV
+
       - name: Login to GHCR
-        if: inputs.push == 'true'
+        if: ${{ inputs.push_image == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -210,7 +250,7 @@ jobs:
           context: .
           file: .devops/Dockerfile.backend
           platforms: linux/amd64
-          push: ${{ inputs.push == 'true' }}
+          push: ${{ inputs.push_image == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=cuda

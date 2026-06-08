@@ -1,0 +1,263 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v1.2.3 or 1.2.3"
+        required: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  ARTIFACT_ROOT: release-assets
+
+jobs:
+  release-metadata:
+    name: Release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.tag.outputs.tag_name }}
+    steps:
+      - id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          raw_tag="${{ inputs.version }}"
+          if [[ "${raw_tag}" == v* ]]; then
+            tag_name="${raw_tag}"
+          else
+            tag_name="v${raw_tag}"
+          fi
+          echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
+
+  ubuntu-cpu:
+    name: Ubuntu ${{ matrix.build }} CPU
+    needs: release-metadata
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build: x64
+            os: ubuntu-22.04
+          - build: arm64
+            os: ubuntu-24.04-arm
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file
+
+      - name: Toolchain workaround
+        if: ${{ contains(matrix.os, 'ubuntu-24.04') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y gcc-14 g++-14
+          echo "CC=gcc-14" >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ${CXX:-g++} -std=c++17 -O3 -DNDEBUG \
+            -I. -Iinclude \
+            -o quadtrix main.cpp
+          file quadtrix
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./quadtrix --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="quadtrix-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-${{ matrix.build }}-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp quadtrix README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: quadtrix-bin-ubuntu-${{ matrix.build }}-cpu
+          path: quadtrix-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-${{ matrix.build }}-cpu.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-cpu:
+    name: Windows ${{ matrix.arch }} CPU
+    needs: release-metadata
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            vcvars: x64
+          - arch: arm64
+            vcvars: amd64_arm64
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" ${{ matrix.vcvars }}
+          cl /nologo /std:c++17 /O2 /DNDEBUG /EHsc /Iinclude /I. main.cpp /Fe:quadtrix.exe
+
+      - name: Smoke test
+        if: ${{ matrix.arch == 'x64' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & .\quadtrix.exe --chat | Out-Null
+          exit 0
+
+      - name: Pack artifacts
+        shell: pwsh
+        run: |
+          $package = "quadtrix-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-${{ matrix.arch }}-cpu"
+          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
+          Copy-Item quadtrix.exe "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: quadtrix-bin-windows-${{ matrix.arch }}-cpu
+          path: quadtrix-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-${{ matrix.arch }}-cpu.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  macos-cpu:
+    name: macOS ${{ matrix.build }} CPU
+    needs: release-metadata
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build: arm64
+            arch: arm64
+            os: macos-14
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang++ -std=c++17 -O3 -DNDEBUG -arch ${{ matrix.arch }} \
+            -I. -Iinclude \
+            -o quadtrix main.cpp
+          file quadtrix
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./quadtrix --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="quadtrix-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-${{ matrix.build }}-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp quadtrix README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: quadtrix-bin-macos-${{ matrix.build }}-cpu
+          path: quadtrix-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-${{ matrix.build }}-cpu.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    name: Publish GitHub release
+    needs:
+      - release-metadata
+      - ubuntu-cpu
+      - windows-cpu
+      - macos-cpu
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          macOS/iOS:
+
+          macOS Apple Silicon (arm64)
+          macOS Apple Silicon (arm64, KleidiAI enabled) DISABLED
+          macOS Intel (x64) SKIPPED
+          iOS XCFramework DISABLED
+
+          Linux:
+
+          Ubuntu x64 (CPU)
+          Ubuntu arm64 (CPU)
+          Ubuntu s390x (CPU) SKIPPED
+          Ubuntu x64 (Vulkan) DISABLED
+          Ubuntu arm64 (Vulkan) DISABLED
+          Ubuntu x64 (ROCm 7.2) DISABLED
+          Ubuntu x64 (OpenVINO) DISABLED
+          Ubuntu x64 (SYCL FP32) DISABLED
+
+          Android:
+
+          Android arm64 (CPU) DISABLED
+
+          Windows:
+
+          Windows x64 (CPU)
+          Windows arm64 (CPU)
+          Windows x64 (CUDA 12) - CUDA 12.4 DLLs DISABLED
+          Windows x64 (CUDA 13) - CUDA 13.3 DLLs DISABLED
+          Windows x64 (Vulkan) DISABLED
+          Windows x64 (SYCL) DISABLED
+          Windows x64 (HIP) DISABLED
+          EOF
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release-metadata.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
+          prerelease: false
+          body_path: release-notes.md
+          files: dist/*

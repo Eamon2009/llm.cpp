@@ -15,7 +15,7 @@ jobs:
       pr-sha: ${{ steps.get-sha.outputs.sha }}
     steps:
       - name: Check commenter permission
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
@@ -34,7 +34,7 @@ jobs:
             }
 
       - name: React with rocket
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.reactions.createForIssueComment({
@@ -46,7 +46,7 @@ jobs:
 
       - name: Get PR head SHA
         id: get-sha
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { data: pr } = await github.rest.pulls.get({
@@ -57,7 +57,7 @@ jobs:
             core.setOutput('sha', pr.head.sha);
 
       - name: Set checks to pending
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const sha = '${{ steps.get-sha.outputs.sha }}';
@@ -96,7 +96,7 @@ jobs:
 
       - name: Report status
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.repos.createCommitStatus({
@@ -158,7 +158,7 @@ jobs:
 
       - name: Report status
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.repos.createCommitStatus({
@@ -218,7 +218,7 @@ jobs:
 
       - name: Report status
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.repos.createCommitStatus({
@@ -237,7 +237,7 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const jobs   = ${{ toJSON(needs) }};

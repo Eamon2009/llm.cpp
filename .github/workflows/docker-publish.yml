@@ -1,66 +1,39 @@
-name: Release
+name: Docker Images
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version tag (e.g. 1.2.3)"
+      image:
+        description: "Image variant to build"
         required: true
+        type: choice
+        options:
+          - cpp
+          - cpu
+          - cuda
+          - all
+      version:
+        description: "Optional image tag for manual runs"
+        required: false
+      push_image:
+        description: "Push to ghcr.io"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+concurrency:
+  group: docker-images-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/quadtrix
 
 jobs:
-
-  build-binaries:
-    name: Binary (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-22.04, macos-14]
-        include:
-          - os: ubuntu-22.04
-            artifact_name: quadtrix-linux-x64
-            binary: quadtrix
-          - os: macos-14
-            artifact_name: quadtrix-macos-arm64
-            binary: quadtrix
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Compile (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update && sudo apt-get install -y g++
-          g++ -std=c++17 -O3 -march=native \
-              -I. -Iinclude \
-              -o ${{ matrix.binary }} main.cpp
-          strip ${{ matrix.binary }}
-
-      - name: Compile (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          g++ -std=c++17 -O3 -march=native \
-              -I. -Iinclude \
-              -o ${{ matrix.binary }} main.cpp
-
-      - name: Package
-        run: |
-          mkdir dist
-          cp ${{ matrix.binary }} dist/
-          cp README.md LICENSE dist/
-          tar -czf ${{ matrix.artifact_name }}.tar.gz -C dist .
-
-      - name: Upload to Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.event.inputs.version }}
-          files: ${{ matrix.artifact_name }}.tar.gz
-          generate_release_notes: true
-
-  publish-images:
-    name: Publish Docker images
+  build-cpp-image:
+    name: Docker cpp
+    if: ${{ inputs.image == 'cpp' || inputs.image == 'all' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -71,62 +44,129 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
+      - name: Set lowercase image prefix
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
+
       - name: Login to GHCR
+        if: ${{ inputs.push_image == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Parse tag
-        id: tag
-        run: echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
-
-      - name: Build & push backend
-        uses: docker/build-push-action@v6
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          context: .
-          file: .devops/Dockerfile.backend
-          platforms: linux/amd64,linux/arm64
-          push: true
+          images: ${{ env.IMAGE_PREFIX }}-cpp
           tags: |
-            ${{ env.IMAGE_PREFIX }}-backend:latest
-            ${{ env.IMAGE_PREFIX }}-backend:${{ steps.tag.outputs.VERSION }}
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
+            type=ref,event=tag
+            type=sha,prefix=sha-
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=raw,value=latest,enable=${{ inputs.push_image == 'true' }}
 
-      - name: Build & push frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: .devops/Dockerfile.frontend
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}-frontend:latest
-            ${{ env.IMAGE_PREFIX }}-frontend:${{ steps.tag.outputs.VERSION }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-
-      - name: Build & push cpp
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: .devops/Dockerfile.cpp
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}-cpp:latest
-            ${{ env.IMAGE_PREFIX }}-cpp:${{ steps.tag.outputs.VERSION }}
+          push: ${{ inputs.push_image == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=cpp
           cache-to: type=gha,mode=max,scope=cpp
 
-      - name: Create Release summary
-        run: |
-          echo "## Docker images published" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Image | Tags |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|------|" >> $GITHUB_STEP_SUMMARY
-          echo "| \`quadtrix-backend\` | \`latest\`, \`${{ steps.tag.outputs.VERSION }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`quadtrix-frontend\` | \`latest\`, \`${{ steps.tag.outputs.VERSION }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| \`quadtrix-cpp\` | \`latest\`, \`${{ steps.tag.outputs.VERSION }}\` |" >> $GITHUB_STEP_SUMMARY
+  build-cpu-image:
+    name: Docker cpu
+    if: ${{ inputs.image == 'cpu' || inputs.image == 'all' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Set lowercase image prefix
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
+
+      - name: Login to GHCR
+        if: ${{ inputs.push_image == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-cpu
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=sha-
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=raw,value=latest,enable=${{ inputs.push_image == 'true' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push_image == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=cpu
+          cache-to: type=gha,mode=max,scope=cpu
+
+  build-cuda-image:
+    name: Docker cuda
+    if: ${{ inputs.image == 'cuda' || inputs.image == 'all' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Set lowercase image prefix
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
+
+      - name: Login to GHCR
+        if: ${{ inputs.push_image == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_PREFIX }}-cuda
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=sha-
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+            type=raw,value=latest,enable=${{ inputs.push_image == 'true' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .devops/Dockerfile.backend
+          platforms: linux/amd64
+          push: ${{ inputs.push_image == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=cuda
+          cache-to: type=gha,mode=max,scope=cuda
