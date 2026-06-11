@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      args:
+        CUDA: "1"
+    image: quadtrix/backend-cuda:latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    environment:
+      CUDA_VISIBLE_DEVICES: "0"
+      TORCH_CHECKPOINT_PATH: /models/best_model.pt
+
+  train-torch:
+    build:
+      args:
+        CUDA: "1"
+    image: quadtrix/backend-cuda:latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    environment:
+      CUDA_VISIBLE_DEVICES: "0"
+      QUADTRIX_TRAIN_DATA: /app/data/input.txt
