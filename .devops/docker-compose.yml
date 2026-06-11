@@ -1,0 +1,173 @@
+name: quadtrix
+
+x-common-env: &common-env
+  TZ: UTC
+  PYTHONUNBUFFERED: "1"
+
+services:
+
+  frontend:
+    build:
+      context: .
+      dockerfile: .devops/Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ""
+    image: quadtrix/frontend:latest
+    container_name: quadtrix-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - quadtrix-net
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost/" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  backend:
+    build:
+      context: .
+      dockerfile: .devops/Dockerfile.backend
+    image: quadtrix/backend:latest
+    container_name: quadtrix-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      <<: *common-env
+      API_PORT: "3001"
+      CORS_ORIGINS: "http://localhost:5173,http://frontend"
+      REDIS_URL: "redis://redis:6379/0"
+      TORCH_CHECKPOINT_PATH: /models/best_model.pt
+      LOG_LEVEL: INFO
+      MAX_SESSIONS: "500"
+      SESSION_TTL_HOURS: "24"
+    volumes:
+      - models:/models
+      - ./engine:/app/engine:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - quadtrix-net
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: quadtrix-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - quadtrix-net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    expose:
+      - "6379"
+
+  cpp:
+    build:
+      context: .
+      dockerfile: .devops/Dockerfile.cpp
+    image: quadtrix/cpp:latest
+    container_name: quadtrix-cpp
+
+    restart: "no"
+    stdin_open: true
+    tty: true
+    volumes:
+      - models:/models
+      - ./data:/app/data:ro
+    environment:
+      <<: *common-env
+      GPT_DATA_PATH: /app/data/input.txt
+      GPT_MODEL_PATH: /models/best_model.bin
+    networks:
+      - quadtrix-net
+    profiles:
+      - cpp
+
+  train-cpp:
+    build:
+      context: .
+      dockerfile: .devops/Dockerfile.cpp
+    image: quadtrix/cpp:latest
+    container_name: quadtrix-train-cpp
+    restart: "no"
+    volumes:
+      - models:/models
+      - ./data:/app/data:ro
+    environment:
+      <<: *common-env
+      GPT_DATA_PATH: /app/data/input.txt
+      GPT_MODEL_PATH: /models/best_model.bin
+    command: [ "data/input.txt" ] # train mode (no --chat flag)
+    networks:
+      - quadtrix-net
+    profiles:
+      - train
+
+  train-torch:
+    build:
+      context: .
+      dockerfile: .devops/Dockerfile.backend
+    image: quadtrix/backend:latest
+    container_name: quadtrix-train-torch
+    restart: "no"
+    volumes:
+      - models:/models
+      - ./engine:/app/engine
+      - ./data:/app/data:ro
+    environment:
+      <<: *common-env
+      QUADTRIX_TRAIN_DATA: /app/data/input.txt
+    working_dir: /app
+    command: [ "python", "engine/main.py" ]
+    networks:
+      - quadtrix-net
+    profiles:
+      - train
+
+  benchmark:
+    build:
+      context: .
+      dockerfile: .devops/Dockerfile.cpp
+    image: quadtrix/cpp:latest
+    container_name: quadtrix-benchmark
+    restart: "no"
+    volumes:
+      - models:/models
+      - ./data:/app/data:ro
+      - ./benchmark_results.csv:/app/benchmark_results.csv
+    environment:
+      <<: *common-env
+      GPT_MODEL_PATH: /models/best_model.bin
+
+    command: [ "data/input.txt", "--generate" ]
+    networks:
+      - quadtrix-net
+    profiles:
+      - benchmark
+
+volumes:
+  models:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  quadtrix-net:
+    driver: bridge
