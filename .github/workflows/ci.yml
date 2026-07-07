@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-integrity:
+    name: File Integrity Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Workspace Structure
+        run: |
+          files=(
+            "main.cpp"
+            "engine/main.py"
+            "requirements.txt"
+          )
+          failed=0
+          for f in "${files[@]}"; do
+            if [ -f "$f" ]; then
+              echo "PASSED: $f exists"
+            else
+              echo "FAILED: $f is missing"
+              failed=1
+            fi
+          done
+          exit $failed
+
+  lint-cpp:
+    name: C/C++ Lint & Static Analysis
+    needs: validate-integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Toolchain Diagnostics
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format cppcheck
+
+      - name: Verify Code Style Compliance
+        run: |
+          find . -name "*.cpp" -o -name "*.h" -o -name "*.c" | grep -v "build/" | \
+            xargs -I {} clang-format --dry-run --Werror {}
+
+      - name: Deep Code Auditing
+        run: |
+          cppcheck --enable=warning,style,performance,portability \
+            --error-exitcode=1 \
+            --inconclusive \
+            -I. -Iinclude \
+            .
+
+  lint-python:
+    name: Python Lint & Type Checking
+    needs: validate-integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Linting Frameworks
+        run: |
+          pip install --upgrade pip
+          pip install ruff mypy -r requirements.txt
+
+      - name: Execute Syntax Checking
+        uses: chartboost/ruff-action@v1
+        with:
+          args: "check engine/ --ignore E501"
+
+      - name: Evaluate Strict Type Allocation
+        run: mypy engine/ --ignore-missing-imports
+
+  build-binary-linux:
+    name: Native Compilation Linux
+    needs: [lint-cpp, lint-python]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Compiler Toolchain
+        run: sudo apt-get update && sudo apt-get install -y g++
+
+      - name: Strict Binary Generation
+        run: |
+          g++ -std=c++17 -O3 -Wall -Wextra -Werror -Wpedantic \
+            -I. -Iinclude \
+            -o quadtrix main.cpp
+
+      - name: Execution Smoke Test
+        run: ./quadtrix --help
+
+      - name: Preserve Artifact State
+        uses: actions/upload-artifact@v4
+        with:
+          name: quadtrix-linux-amd64
+          path: quadtrix
+          retention-days: 7
+
+  build-binary-macos:
+    name: Native Compilation macOS
+    needs: [lint-cpp, lint-python]
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Strict Binary Generation
+        run: |
+          g++ -std=c++17 -O3 -Wall -Wextra -Werror -Wpedantic \
+            -I. -Iinclude \
+            -o quadtrix main.cpp
+
+      - name: Execution Smoke Test
+        run: ./quadtrix --help
+
+      - name: Package Runtime Artifact
+        run: tar -czf quadtrix-macos-arm64.tar.gz quadtrix
+
+      - name: Preserve Artifact State
+        uses: actions/upload-artifact@v4
+        with:
+          name: quadtrix-macos-arm64
+          path: quadtrix-macos-arm64.tar.gz
+          retention-days: 7
+
+  test-container-images:
+    name: Container Matrix Verification Build
+    needs: [lint-cpp, lint-python]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image-type: cpp
+            dockerfile: .devops/Dockerfile.cpp
+            platforms: "linux/amd64,linux/arm64"
+          - image-type: cpu
+            dockerfile: .devops/Dockerfile
+            platforms: "linux/amd64,linux/arm64"
+          - image-type: cuda
+            dockerfile: .devops/Dockerfile.backend
+            platforms: "linux/amd64"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Provision QEMU Emulators
+        if: matrix.image-type != 'cuda'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Provision Container Engine Setup
+        uses: docker/setup-buildx-action@v3
+
+      - name: Process Image Assembly Task
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platforms }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image-type }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image-type }}
