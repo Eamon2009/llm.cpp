@@ -3,6 +3,14 @@ name: PR Checks
 on:
   issue_comment:
     types: [created]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  statuses: write
 
 jobs:
   slash-command:
@@ -15,7 +23,7 @@ jobs:
       pr-sha: ${{ steps.get-sha.outputs.sha }}
     steps:
       - name: Check commenter permission
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
@@ -28,13 +36,13 @@ jobs:
                 owner: context.repo.owner,
                 repo:  context.repo.repo,
                 issue_number: context.issue.number,
-                body: `@${context.actor} Only maintainers can trigger checks.`,
+                body: `@${context.actor} ❌ Only maintainers can trigger checks.`,
               });
-              core.setFailed('Unauthorized');
+              core.setFailed('Unauthorized execution attempt.');
             }
 
       - name: React with rocket
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             await github.rest.reactions.createForIssueComment({
@@ -46,7 +54,7 @@ jobs:
 
       - name: Get PR head SHA
         id: get-sha
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             const { data: pr } = await github.rest.pulls.get({
@@ -57,7 +65,7 @@ jobs:
             core.setOutput('sha', pr.head.sha);
 
       - name: Set checks to pending
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             const sha = '${{ steps.get-sha.outputs.sha }}';
@@ -69,10 +77,9 @@ jobs:
                 sha,
                 state: 'pending',
                 context: check,
-                description: 'Waiting...',
+                description: 'Waiting in queue...',
               });
             }
-
 
   lint:
     name: Lint
@@ -82,12 +89,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.slash-command.outputs.pr-sha }}
+          fetch-depth: 1
 
       - name: C++ format check
         run: |
-          sudo apt-get install -y clang-format
+          sudo apt-get update && sudo apt-get install -y clang-format
           find . -name "*.cpp" -o -name "*.h" | grep -v "build/" | \
-            xargs clang-format --dry-run --Werror || true
+            xargs -I {} clang-format --dry-run --Werror {}
 
       - name: Python lint (ruff)
         uses: chartboost/ruff-action@v1
@@ -96,7 +104,7 @@ jobs:
 
       - name: Report status
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             await github.rest.repos.createCommitStatus({
@@ -105,9 +113,8 @@ jobs:
               sha:   '${{ needs.slash-command.outputs.pr-sha }}',
               state: '${{ job.status }}' === 'success' ? 'success' : 'failure',
               context: 'Lint',
-              description: '${{ job.status }}',
+              description: 'Completed with status: ${{ job.status }}',
             });
-
 
   build-cpp:
     name: Build C++ (${{ matrix.os }})
@@ -147,7 +154,7 @@ jobs:
             -o quadtrix main.cpp
 
       - name: Smoke test
-        run: ./quadtrix --help || true
+        run: ./quadtrix --help
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -155,10 +162,11 @@ jobs:
           name: ${{ matrix.artifact }}
           path: quadtrix
           retention-days: 7
+          if-no-files-found: error
 
       - name: Report status
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             await github.rest.repos.createCommitStatus({
@@ -167,9 +175,8 @@ jobs:
               sha:   '${{ needs.slash-command.outputs.pr-sha }}',
               state: '${{ job.status }}' === 'success' ? 'success' : 'failure',
               context: 'Build C++ (${{ matrix.os }})',
-              description: '${{ job.status }}',
+              description: 'Completed with status: ${{ job.status }}',
             });
-
 
   validate:
     name: Validate
@@ -218,7 +225,7 @@ jobs:
 
       - name: Report status
         if: always()
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         with:
           script: |
             await github.rest.repos.createCommitStatus({
@@ -227,9 +234,8 @@ jobs:
               sha:   '${{ needs.slash-command.outputs.pr-sha }}',
               state: '${{ job.status }}' === 'success' ? 'success' : 'failure',
               context: 'Validate',
-              description: '${{ job.status }}',
+              description: 'Completed with status: ${{ job.status }}',
             });
-
 
   post-result:
     name: Post result
@@ -237,16 +243,19 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - uses: actions/github-script@v9
+      - uses: actions/github-script@v7
         with:
           script: |
             const jobs   = ${{ toJSON(needs) }};
-            const failed = Object.values(jobs).some(j => j.result === 'failure');
+            const failed = Object.values(jobs).some(j => j.result === 'failure' || j.result === 'cancelled');
+            
+            const message = failed
+              ? '❌ **Some checks failed or were cancelled.** Please check the [Actions tab](https://github.com/${{ context.repo.owner }}/${{ context.repo.repo }}/actions/runs/${{ github.run_id }}) for details.'
+              : '✅ **All checks passed successfully!**';
+              
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo:  context.repo.repo,
               issue_number: context.issue.number,
-              body: failed
-                ? '❌ Some checks failed — see Actions for details.'
-                : '✅ All checks passed!',
+              body: message
             });
