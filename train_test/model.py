@@ -4,8 +4,6 @@ from torch.nn import functional as F
 from typing import Optional, Tuple
 import os
 import tiktoken
-
-# File Paths
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _model_path = os.path.join(_project_root, 'best_model.pt')
 _script_path = os.path.join(_project_root, 'best_model_script.pt')
@@ -17,8 +15,6 @@ n_head = 4
 n_layer = 4
 dropout = 0.1
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-# Tokenizer (Updated to use Tiktoken GPT-2 encoding from enginw/main.py)
 tokenizer = tiktoken.get_encoding("gpt2")
 vocab_size = tokenizer.n_vocab
 def encode(s): return tokenizer.encode(s)
@@ -26,9 +22,6 @@ def decode(l): return tokenizer.decode(l)
 
 
 chars = []
-
-
-# Model classes
 class Head(nn.Module):
     def __init__(self, head_size: int):
         super().__init__()

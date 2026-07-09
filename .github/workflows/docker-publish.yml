@@ -28,7 +28,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/quadtrix
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/llm.cpp
 
 jobs:
   build-cpp-image:
@@ -45,7 +45,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Set lowercase image prefix
-        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/llm.cpp" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
         if: ${{ inputs.push_image == 'true' }}
@@ -92,7 +92,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Set lowercase image prefix
-        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/llm.cpp" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
         if: ${{ inputs.push_image == 'true' }}
@@ -138,7 +138,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       - name: Set lowercase image prefix
-        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/quadtrix" >> "$GITHUB_ENV"
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/llm.cpp" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
         if: ${{ inputs.push_image == 'true' }}
@@ -146,27 +146,4 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.IMAGE_PREFIX }}-cuda
-          tags: |
-            type=ref,event=tag
-            type=sha,prefix=sha-
-            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
-            type=raw,value=latest,enable=${{ inputs.push_image == 'true' }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: .devops/Dockerfile.backend
-          platforms: linux/amd64
-          push: ${{ inputs.push_image == 'true' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=cuda
-          cache-to: type=gha,mode=max,scope=cuda
+          password: ${{ secrets

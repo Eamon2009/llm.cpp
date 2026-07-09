@@ -1,0 +1,54 @@
+name: Code Style & Linting
+
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+
+jobs:
+  cpp-style:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format
+
+      - name: Check C++ code formatting
+        run: |
+          find . -name "*.cpp" -o -name "*.h" -o -name "*.hpp" | grep -v build | xargs clang-format --dry-run --Werror
+        continue-on-error: true
+
+  python-style:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install style checkers
+        run: |
+          pip install black isort flake8 pylint
+
+      - name: Check Python formatting with black
+        run: |
+          black --check . || true
+        continue-on-error: true
+
+      - name: Check import sorting
+        run: |
+          isort --check-only . || true
+        continue-on-error: true
+
+      - name: Lint Python code
+        run: |
+          pylint **/*.py --exit-zero
+        continue-on-error: true
