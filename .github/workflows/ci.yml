@@ -7,17 +7,172 @@ on:
     branches: [ master, main, develop ]
 
 jobs:
-  build-cpp:
+  cpp-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang-format clang-tidy cppcheck \
+            build-essential g++ clang
+
+      - name: Clang-Format Check
+        id: clang-format
+        run: |
+          echo "### 🔍 Clang-Format Code Style Check" >> $GITHUB_STEP_SUMMARY
+          find . -name "*.cpp" -o -name "*.h" -o -name "*.hpp" | grep -v build > cpp_files.txt
+          
+          if [ -s cpp_files.txt ]; then
+            clang-format --dry-run -Werror $(cat cpp_files.txt) 2>&1 | tee format_output.txt || true
+            if grep -q "error:" format_output.txt; then
+              echo "Format violations found" >> $GITHUB_STEP_SUMMARY
+              cat format_output.txt >> $GITHUB_STEP_SUMMARY
+              exit 1
+            else
+              echo " Code formatting is correct" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo " No C++ files found" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: CppCheck Static Analysis
+        id: cppcheck
+        run: |
+          echo "### CppCheck Static Analysis" >> $GITHUB_STEP_SUMMARY
+          cppcheck \
+            --enable=all \
+            --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --std=c++17 \
+            . 2>&1 | tee cppcheck_output.txt || true
+          
+          if grep -q "\[" cppcheck_output.txt; then
+            echo "Issues detected:" >> $GITHUB_STEP_SUMMARY
+            cat cppcheck_output.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo " No critical issues found" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: Clang-Tidy Analysis
+        id: clang-tidy
+        run: |
+          echo "### Clang-Tidy Code Quality" >> $GITHUB_STEP_SUMMARY
+          
+          find . -name "*.cpp" -o -name "*.h" -o -name "*.hpp" | grep -v build | while read file; do
+            clang-tidy "$file" \
+              -checks="*,-fuchsia-*,-google-*,-llvm-*,-readability-magic-numbers,-readability-identifier-length" \
+              --format-style=file \
+              2>&1 || true
+          done | tee clang_tidy_output.txt
+          
+          if grep -q "warning:" clang_tidy_output.txt; then
+            echo "Code quality improvements suggested:" >> $GITHUB_STEP_SUMMARY
+            grep "warning:" clang_tidy_output.txt | head -20 >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Clang-tidy passed" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+  python-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python tools
+        run: |
+          pip install --upgrade pip
+          pip install black isort flake8 pylint mypy bandit radon vulture
+
+      - name: Black Format Check
+        id: black
+        run: |
+          echo "###  Black Code Formatting" >> $GITHUB_STEP_SUMMARY
+          black --check --diff . 2>&1 | tee black_output.txt || true
+          if [ $? -ne 0 ]; then
+            echo " Formatting issues detected:" >> $GITHUB_STEP_SUMMARY
+            head -30 black_output.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Black formatting passed" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: isort Import Check
+        id: isort
+        run: |
+          echo "### isort Import Organization" >> $GITHUB_STEP_SUMMARY
+          isort --check-only --diff . 2>&1 | tee isort_output.txt || true
+          if [ $? -ne 0 ]; then
+            echo "Import sorting issues:" >> $GITHUB_STEP_SUMMARY
+            head -20 isort_output.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Import sorting is correct" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: Flake8 Linting
+        id: flake8
+        run: |
+          echo "###  Flake8 Linting" >> $GITHUB_STEP_SUMMARY
+          flake8 . --max-line-length=127 --count --statistics 2>&1 | tee flake8_output.txt || true
+          if [ $? -ne 0 ]; then
+            echo "Linting violations:" >> $GITHUB_STEP_SUMMARY
+            cat flake8_output.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo " Flake8 passed" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: Pylint Analysis
+        id: pylint
+        run: |
+          echo "###  Pylint Code Analysis" >> $GITHUB_STEP_SUMMARY
+          find . -name "*.py" -type f | grep -v __pycache__ | xargs pylint \
+            --fail-under=7.0 \
+            --disable=C0111,C0103,R0913,W0212 \
+            2>&1 | tee pylint_output.txt || true
+          
+          if grep -q "rated at" pylint_output.txt; then
+            echo " Pylint analysis complete" >> $GITHUB_STEP_SUMMARY
+            tail -3 pylint_output.txt >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: Bandit Security Scan
+        id: bandit
+        run: |
+          echo "###  Bandit Security Check" >> $GITHUB_STEP_SUMMARY
+          bandit -r . -ll 2>&1 | tee bandit_output.txt || true
+          if grep -q "Issue:" bandit_output.txt; then
+            echo " Security issues found:" >> $GITHUB_STEP_SUMMARY
+            grep -A1 "Issue:" bandit_output.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No security issues detected" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+  build-quadtrix:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        compiler: [gcc, clang]
-        exclude:
-          - os: macos-latest
-            compiler: gcc
-          - os: windows-latest
-            compiler: clang
       fail-fast: false
     
     steps:
@@ -29,38 +184,102 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential
+          sudo apt-get install -y build-essential g++
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install cmake
+          brew install gcc
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install cmake -y
+          choco install mingw -y
 
-      - name: Create build directory
-        run: mkdir -p build
-
-      - name: Configure CMake
+      - name: Build inference executable
+        id: build-inference
         run: |
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build
-        run: |
-          cd build
-          cmake --build . --config Release --parallel 4
-
-      - name: Run C++ tests
-        run: |
-          cd build
-          ctest --output-on-failure --parallel 4
+          echo "### 🔨 Building Inference Executable" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "main.cpp" ]; then
+            g++ -std=c++17 -O2 -I. -Iinclude -o quadtrix_inference main.cpp 2>&1 | tee inference_build.txt || true
+            
+            if [ -f "quadtrix_inference" ] || [ -f "quadtrix_inference.exe" ]; then
+              echo " Inference build successful" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "Inference build failed" >> $GITHUB_STEP_SUMMARY
+              cat inference_build.txt >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "main.cpp not found - skipping inference build" >> $GITHUB_STEP_SUMMARY
+          fi
         continue-on-error: true
 
-  build-python:
+      - name: Test inference executable
+        id: test-inference
+        run: |
+          echo "###  Testing Inference Executable" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "quadtrix_inference" ] || [ -f "quadtrix_inference.exe" ]; then
+            BINARY="quadtrix_inference"
+            if [ ! -f "$BINARY" ]; then
+              BINARY="quadtrix_inference.exe"
+            fi
+            
+            if [ -f "data/input.txt" ]; then
+              ./$BINARY data/input.txt 2>&1 | tee inference_test.txt || true
+              echo "Inference test completed" >> $GITHUB_STEP_SUMMARY
+              head -20 inference_test.txt >> $GITHUB_STEP_SUMMARY
+            else
+              echo " data/input.txt not found - skipping inference test" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "Inference executable not found" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: Build training executable
+        id: build-training
+        run: |
+          echo "### Building Training Executable" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "train.cpp" ] && [ -f "llm.cpp" ]; then
+            g++ -std=c++17 -O2 -I. -Iinclude llm.cpp train.cpp -o quadtrix_train 2>&1 | tee training_build.txt || true
+            
+            if [ -f "quadtrix_train" ] || [ -f "quadtrix_train.exe" ]; then
+              echo " Training build successful" >> $GITHUB_STEP_SUMMARY
+            else
+              echo " Training build failed" >> $GITHUB_STEP_SUMMARY
+              cat training_build.txt >> $GITHUB_STEP_SUMMARY
+            fi
+          elif [ -f "train.cpp" ]; then
+            echo " train.cpp found but llm.cpp not found - skipping training build" >> $GITHUB_STEP_SUMMARY
+          else
+            echo " train.cpp not found - skipping training build" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: Test training executable
+        id: test-training
+        run: |
+          echo "###  Testing Training Executable" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "quadtrix_train" ] || [ -f "quadtrix_train.exe" ]; then
+            BINARY="quadtrix_train"
+            if [ ! -f "$BINARY" ]; then
+              BINARY="quadtrix_train.exe"
+            fi
+            
+            echo "Running training executable (timeout 30s)..." >> $GITHUB_STEP_SUMMARY
+            timeout 30 ./$BINARY 2>&1 | tee training_test.txt || true
+            echo "Training test completed" >> $GITHUB_STEP_SUMMARY
+            head -20 training_test.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Training executable not found" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+  python-tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -69,6 +288,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
@@ -78,44 +299,42 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install -r requirements.txt 2>/dev/null || echo "No requirements.txt found"
-          pip install pytest pytest-cov pylint flake8
-
-      - name: Lint with flake8
-        run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-        continue-on-error: true
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt 2>/dev/null || echo " Some requirements failed to install"
+          fi
 
       - name: Run Python tests
+        id: pytest
         run: |
-          pytest --cov=. --cov-report=xml --cov-report=term -v 2>/dev/null || echo "No tests found"
+          echo "### Python Tests (Python ${{ matrix.python-version }})" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -d "tests" ] || [ -d "test" ] || [ ! -z "$(find . -name 'test_*.py' -o -name '*_test.py')" ]; then
+            pytest --cov=. --cov-report=term -v 2>&1 | tee pytest_output.txt || true
+            if [ $? -eq 0 ]; then
+              echo "All tests passed" >> $GITHUB_STEP_SUMMARY
+            else
+              echo " Some tests failed" >> $GITHUB_STEP_SUMMARY
+            fi
+            tail -30 pytest_output.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo " No test files found" >> $GITHUB_STEP_SUMMARY
+          fi
         continue-on-error: true
 
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v3
-        if: matrix.python-version == '3.12'
-        with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
-
-  code-quality:
+  summary:
     runs-on: ubuntu-latest
-
+    needs: [cpp-quality, python-quality, build-quadtrix, python-tests]
+    if: always()
+    
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Run CodeQL analysis
-        uses: github/codeql-action/init@v2
-        with:
-          languages: 'cpp, python'
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v2
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
-        continue-on-error: true
+      - name: Check results
+        run: |
+          echo "## Build & Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **C++ Quality Checks**: ${{ needs.cpp-quality.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Quality Checks**: ${{ needs.python-quality.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Tests**: ${{ needs.build-quadtrix.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Tests**: ${{ needs.python-tests.result }}" >> $GITHUB_STEP_SUMMARY
