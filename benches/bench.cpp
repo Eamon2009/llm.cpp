@@ -1,11 +1,9 @@
 // Real C++ benchmark suite for Quadtrix.cpp.
 //
-// Build:
-//   g++ -std=c++17 -O3 -DNDEBUG -I. benchmark/cpp_benchmark.cpp -o benchmark/quadtrix_cpp_bench
-//
-// Run:
-//   benchmark/quadtrix_cpp_bench --quick
-//   benchmark/quadtrix_cpp_bench --data data/input.txt --model best_model.bin
+#include "../config/config.h"
+#include "../LMGNU/backward.h"
+#include "../LMGNU/dataloader.h"
+#include "../LMGNU/gpt.h"
 
 #include <algorithm>
 #include <chrono>
@@ -21,11 +19,6 @@
 #include <string>
 #include <vector>
 
-#include "../config/config.h"
-#include "../include/backward.h"
-#include "../include/dataloader.h"
-#include "../include/gpt.h"
-
 #if __has_include(<filesystem>)
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -35,7 +28,7 @@ struct Options
 {
       std::string data_path = DEFAULT_CLEANED_PATH;
       std::string model_path = BEST_MODEL_PATH;
-      std::string out_dir = "benchmark/results";
+      std::string out_dir = "benches/results";
       int runs = 10;
       int warmup = 3;
       int batch_size = BATCH_SIZE;
@@ -150,8 +143,7 @@ static Stats summarize(const std::vector<double> &samples)
       return s;
 }
 
-template <typename Fn>
-static std::pair<Stats, double> run_timed(int runs, int warmup, Fn fn)
+template <typename Fn> static std::pair<Stats, double> run_timed(int runs, int warmup, Fn fn)
 {
       double sink = 0.0;
       for (int i = 0; i < warmup; ++i)
@@ -178,15 +170,15 @@ static void push_row(std::vector<BenchRow> &rows, const BenchRow &row)
 {
       rows.push_back(row);
       const BenchRow &r = rows.back();
-      std::cout << std::left << std::setw(14) << r.suite
-                << std::setw(24) << r.name
+      std::cout << std::left << std::setw(14) << r.suite << std::setw(24) << r.name
                 << "avg=" << std::right << std::setw(9) << std::fixed << std::setprecision(3)
-                << r.stats.avg_ms << " ms  p95=" << std::setw(9)
-                << r.stats.p95_ms << " ms  tok/s=" << std::setw(10)
-                << std::setprecision(1) << r.tokens_per_sec << "\n";
+                << r.stats.avg_ms << " ms  p95=" << std::setw(9) << r.stats.p95_ms
+                << " ms  tok/s=" << std::setw(10) << std::setprecision(1) << r.tokens_per_sec
+                << "\n";
 }
 
-static void prepare_dataloader_from_text(DataLoader &dl, const std::string &text, double train_split)
+static void
+prepare_dataloader_from_text(DataLoader &dl, const std::string &text, double train_split)
 {
       if (text.empty())
             throw std::runtime_error("[Benchmark] Input text is empty.");
@@ -287,10 +279,10 @@ static void bench_primitives(const Options &opt, std::vector<BenchRow> &rows)
             int B, T, D, E;
       };
       std::vector<Case> cases = {
-          {"matmul_3d", 1, 16, N_EMBD, N_EMBD},
-          {"matmul_3d", opt.batch_size, BLOCK_SIZE, N_EMBD, N_EMBD},
-          {"softmax3d", opt.batch_size, BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE},
-          {"layer_norm", opt.batch_size, BLOCK_SIZE, N_EMBD, N_EMBD},
+            {"matmul_3d", 1, 16, N_EMBD, N_EMBD},
+            {"matmul_3d", opt.batch_size, BLOCK_SIZE, N_EMBD, N_EMBD},
+            {"softmax3d", opt.batch_size, BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE},
+            {"layer_norm", opt.batch_size, BLOCK_SIZE, N_EMBD, N_EMBD},
       };
 
       for (const auto &c : cases)
@@ -324,10 +316,15 @@ static void bench_primitives(const Options &opt, std::vector<BenchRow> &rows)
       }
 }
 
-static void bench_forward(const Options &opt, GPTLanguageModel &model, DataLoader &dl, std::vector<BenchRow> &rows)
+static void bench_forward(const Options &opt,
+                          GPTLanguageModel &model,
+                          DataLoader &dl,
+                          std::vector<BenchRow> &rows)
 {
       std::mt19937 rng(SEED);
-      std::vector<std::pair<int, int>> cases = {{1, 8}, {1, BLOCK_SIZE}, {opt.batch_size, BLOCK_SIZE}};
+      std::vector<std::pair<int, int>> cases = {{1, 8},
+                                                {1, BLOCK_SIZE},
+                                                {opt.batch_size, BLOCK_SIZE}};
       for (auto c : cases)
       {
             int B = c.first;
@@ -357,7 +354,10 @@ static void bench_forward(const Options &opt, GPTLanguageModel &model, DataLoade
       }
 }
 
-static void bench_training_step(const Options &opt, GPTLanguageModel &model, DataLoader &dl, std::vector<BenchRow> &rows)
+static void bench_training_step(const Options &opt,
+                                GPTLanguageModel &model,
+                                DataLoader &dl,
+                                std::vector<BenchRow> &rows)
 {
       std::mt19937 rng(SEED);
       AdamWState optimizer = build_optimizer(model, LEARNING_RATE);
@@ -366,7 +366,8 @@ static void bench_training_step(const Options &opt, GPTLanguageModel &model, Dat
 
       auto fn = [&]() -> double
       {
-            SavedForward saved = forward_save(model, batch.first, opt.batch_size, BLOCK_SIZE, batch.second, true);
+            SavedForward saved =
+                  forward_save(model, batch.first, opt.batch_size, BLOCK_SIZE, batch.second, true);
             last_loss = cross_entropy(saved.logits2d, batch.second);
             Grads grads = backward(model, saved);
             apply_grads(model, grads, optimizer);
@@ -388,12 +389,15 @@ static void bench_training_step(const Options &opt, GPTLanguageModel &model, Dat
       push_row(rows, row);
 }
 
-static void bench_generation(const Options &opt, GPTLanguageModel &model, DataLoader &dl, std::vector<BenchRow> &rows)
+static void bench_generation(const Options &opt,
+                             GPTLanguageModel &model,
+                             DataLoader &dl,
+                             std::vector<BenchRow> &rows)
 {
       std::vector<std::pair<std::string, std::string>> prompts = {
-          {"empty", ""},
-          {"short", "The future of local AI is"},
-          {"long", "Quadtrix is a compact transformer benchmark that measures "}};
+            {"empty", ""},
+            {"short", "The future of local AI is"},
+            {"long", "LLM.CPP is a compact transformer benchmark that measures "}};
       for (const auto &p : prompts)
       {
             std::vector<int> ctx = dl.encode(p.second);
@@ -431,7 +435,10 @@ static void ensure_dir(const std::string &dir)
 #endif
 }
 
-static void save_results(const Options &opt, const GPTLanguageModel &model, const DataLoader &dl, const std::vector<BenchRow> &rows)
+static void save_results(const Options &opt,
+                         const GPTLanguageModel &model,
+                         const DataLoader &dl,
+                         const std::vector<BenchRow> &rows)
 {
       ensure_dir(opt.out_dir);
       std::string json_path = opt.out_dir + "/cpp_benchmark.json";
@@ -444,13 +451,15 @@ static void save_results(const Options &opt, const GPTLanguageModel &model, cons
       j << "  \"timestamp\": \"" << json_escape(now_iso()) << "\",\n";
       j << "  \"backend\": \"cpp\",\n";
       j << "  \"system\": {\n";
-      j << "    \"compiler\": \"" << json_escape(
+      j << "    \"compiler\": \""
+        << json_escape(
 #ifdef __VERSION__
-        __VERSION__
+                 __VERSION__
 #else
-        "unknown"
+                 "unknown"
 #endif
-        ) << "\",\n";
+                 )
+        << "\",\n";
       j << "    \"standard\": \"C++17\"\n";
       j << "  },\n";
       j << "  \"model\": {\n";
@@ -506,15 +515,16 @@ static void save_results(const Options &opt, const GPTLanguageModel &model, cons
       j << "}\n";
 
       std::ofstream c(csv_path.c_str());
-      c << "suite,name,backend,batch_size,sequence_length,tokens,avg_ms,median_ms,min_ms,max_ms,p90_ms,p95_ms,std_ms,tokens_per_sec,samples,loss,memory_mb,notes\n";
+      c << "suite,name,backend,batch_size,sequence_length,tokens,avg_ms,median_ms,min_ms,max_ms,"
+           "p90_ms,p95_ms,std_ms,tokens_per_sec,samples,loss,memory_mb,notes\n";
       c << std::fixed << std::setprecision(6);
       for (const auto &r : rows)
       {
-            c << r.suite << "," << r.name << ",cpp,"
-              << r.batch_size << "," << r.sequence_length << "," << r.tokens << ","
-              << r.stats.avg_ms << "," << r.stats.median_ms << "," << r.stats.min_ms << ","
-              << r.stats.max_ms << "," << r.stats.p90_ms << "," << r.stats.p95_ms << ","
-              << r.stats.std_ms << "," << r.tokens_per_sec << "," << r.samples << ",";
+            c << r.suite << "," << r.name << ",cpp," << r.batch_size << "," << r.sequence_length
+              << "," << r.tokens << "," << r.stats.avg_ms << "," << r.stats.median_ms << ","
+              << r.stats.min_ms << "," << r.stats.max_ms << "," << r.stats.p90_ms << ","
+              << r.stats.p95_ms << "," << r.stats.std_ms << "," << r.tokens_per_sec << ","
+              << r.samples << ",";
             if (r.has_loss)
                   c << r.loss;
             c << "," << r.memory_mb << ",\"" << json_escape(r.notes) << "\"\n";
@@ -559,7 +569,8 @@ static Options parse_args(int argc, char **argv)
             opt.warmup = 1;
             opt.train_steps = 1;
             opt.generate_tokens = 4;
-            opt.max_data_chars = opt.max_data_chars > 0 ? std::min(opt.max_data_chars, 50000) : 50000;
+            opt.max_data_chars =
+                  opt.max_data_chars > 0 ? std::min(opt.max_data_chars, 50000) : 50000;
       }
       opt.runs = std::max(1, opt.runs);
       opt.warmup = std::max(0, opt.warmup);

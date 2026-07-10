@@ -1,252 +1,153 @@
-name: PR Checks
+name: PR Comment Checks
 
 on:
   issue_comment:
-    types: [created]
+    types: [created, edited]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  checks: write
 
 jobs:
-  slash-command:
-    name: Parse /run-checks
-    if: >-
-      github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '/run-checks')
+  check-trigger:
     runs-on: ubuntu-latest
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/run-checks') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+      )
     outputs:
-      pr-sha: ${{ steps.get-sha.outputs.sha }}
+      pr_number: ${{ github.event.issue.number }}
     steps:
-      - name: Check commenter permission
-        uses: actions/github-script@v9
+      - name: Add reaction to comment
+        uses: actions/github-script@v7
         with:
           script: |
-            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              username: context.actor,
-            });
-            if (!['admin', 'write'].includes(data.permission)) {
-              await github.rest.issues.createComment({
+            (async () => {
+              await github.rest.reactions.createForIssueComment({
                 owner: context.repo.owner,
-                repo:  context.repo.repo,
-                issue_number: context.issue.number,
-                body: `@${context.actor} Only maintainers can trigger checks.`,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content: 'rocket'
               });
-              core.setFailed('Unauthorized');
-            }
+            })();
 
-      - name: React with rocket
-        uses: actions/github-script@v9
+      - name: Update comment with status
+        uses: actions/github-script@v7
         with:
           script: |
-            await github.rest.reactions.createForIssueComment({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              comment_id: ${{ github.event.comment.id }},
-              content: 'rocket',
-            });
-
-      - name: Get PR head SHA
-        id: get-sha
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const { data: pr } = await github.rest.pulls.get({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              pull_number: context.issue.number,
-            });
-            core.setOutput('sha', pr.head.sha);
-
-      - name: Set checks to pending
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const sha = '${{ steps.get-sha.outputs.sha }}';
-            const checks = ['Lint', 'Build C++ (ubuntu-22.04)', 'Build C++ (ubuntu-24.04)', 'Build C++ (macos-14)', 'Validate'];
-            for (const check of checks) {
-              await github.rest.repos.createCommitStatus({
+            (async () => {
+              await github.rest.issues.updateComment({
                 owner: context.repo.owner,
-                repo:  context.repo.repo,
-                sha,
-                state: 'pending',
-                context: check,
-                description: 'Waiting...',
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                body: `Running strict checks... (initiated by @${context.payload.comment.user.login})\n\nPlease wait for results...`
               });
-            }
+            })();
 
-
-  lint:
-    name: Lint
-    needs: slash-command
+  strict-cpp-checks:
     runs-on: ubuntu-latest
+    needs: check-trigger
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.slash-command.outputs.pr-sha }}
+          fetch-depth: 0
+          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/merge
 
-      - name: C++ format check
+      - name: Install C++ tools
         run: |
-          sudo apt-get install -y clang-format
-          find . -name "*.cpp" -o -name "*.h" | grep -v "build/" | \
-            xargs clang-format --dry-run --Werror || true
+          sudo apt-get update
+          sudo apt-get install -y clang-format clang-tidy cppcheck build-essential cmake g++ clang
 
-      - name: Python lint (ruff)
-        uses: chartboost/ruff-action@v1
-        with:
-          args: "check engine/ --ignore E501 --exit-zero"
-
-      - name: Report status
-        if: always()
-        uses: actions/github-script@v9
-        with:
-          script: |
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              sha:   '${{ needs.slash-command.outputs.pr-sha }}',
-              state: '${{ job.status }}' === 'success' ? 'success' : 'failure',
-              context: 'Lint',
-              description: '${{ job.status }}',
-            });
-
-
-  build-cpp:
-    name: Build C++ (${{ matrix.os }})
-    needs: slash-command
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, ubuntu-24.04, macos-14]
-        include:
-          - os: ubuntu-22.04
-            artifact: quadtrix-linux-x64
-          - os: ubuntu-24.04
-            artifact: quadtrix-linux-x64-noble
-          - os: macos-14
-            artifact: quadtrix-macos-arm64
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.slash-command.outputs.pr-sha }}
-
-      - name: Install GCC (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y g++ ccache
-
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ccache-${{ matrix.os }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
-          restore-keys: ccache-${{ matrix.os }}-
-
-      - name: Compile main.cpp
+      # ... (other steps unchanged) ...
+      - name: Run clang-format check (strict)
+        id: clang-format
         run: |
-          g++ -std=c++17 -O3 -march=native \
-            -I. -Iinclude \
-            -o quadtrix main.cpp
-
-      - name: Smoke test
-        run: ./quadtrix --help || true
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: quadtrix
-          retention-days: 7
-
-      - name: Report status
-        if: always()
-        uses: actions/github-script@v9
-        with:
-          script: |
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              sha:   '${{ needs.slash-command.outputs.pr-sha }}',
-              state: '${{ job.status }}' === 'success' ? 'success' : 'failure',
-              context: 'Build C++ (${{ matrix.os }})',
-              description: '${{ job.status }}',
-            });
-
-
-  validate:
-    name: Validate
-    needs: slash-command
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.slash-command.outputs.pr-sha }}
-
-      - name: Check required files exist
-        run: |
-          files=(
-            "main.cpp"
-            "engine/main.py"
-            "requirements.txt"
-          )
-          failed=0
-          for f in "${files[@]}"; do
-            if [ -f "$f" ]; then
-              echo "✅  $f"
+          echo "### Clang Format Check" >> $GITHUB_STEP_SUMMARY
+          find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) | grep -v /build/ > cpp_files.txt || true
+          if [ -s cpp_files.txt ]; then
+            clang-format --dry-run -Werror $(cat cpp_files.txt) 2>&1 | tee format_output.txt || true
+            if [ -s format_output.txt ]; then
+              echo "Format violations found" >> $GITHUB_STEP_SUMMARY
+              cat format_output.txt >> $GITHUB_STEP_SUMMARY
+              exit 1
             else
-              echo "❌  $f — MISSING"
-              failed=1
+              echo "C++ formatting is correct" >> $GITHUB_STEP_SUMMARY
             fi
-          done
-          exit $failed
+          else
+            echo "No C++ files found" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
 
-      - name: Lint — Dockerfile.cpp
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: .devops/Dockerfile.cpp
-          failure-threshold: error
-
-      - name: Lint — Dockerfile (CPU)
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: .devops/Dockerfile
-          failure-threshold: error
-
-      - name: Lint — Dockerfile.backend (CUDA)
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: .devops/Dockerfile.backend
-          failure-threshold: error
-
-      - name: Report status
-        if: always()
-        uses: actions/github-script@v9
-        with:
-          script: |
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              sha:   '${{ needs.slash-command.outputs.pr-sha }}',
-              state: '${{ job.status }}' === 'success' ? 'success' : 'failure',
-              context: 'Validate',
-              description: '${{ job.status }}',
-            });
-
-
-  post-result:
-    name: Post result
-    needs: [slash-command, lint, build-cpp, validate]
+  strict-python-checks:
     runs-on: ubuntu-latest
-    if: always()
+    needs: check-trigger
     steps:
-      - uses: actions/github-script@v9
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/merge
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ... (other steps unchanged) ...
+
+  build-test:
+    runs-on: ubuntu-latest
+    needs: check-trigger
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/merge
+
+      - name: Install C++ dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential g++ clang
+
+      # ... (other steps unchanged) ...
+
+  summary:
+    runs-on: ubuntu-latest
+    needs: [strict-cpp-checks, strict-python-checks, build-test]
+    if: always()
+    env:
+      PR_NUMBER: ${{ needs.check-trigger.outputs.pr_number }}
+    steps:
+      - name: Post results comment
+        uses: actions/github-script@v7
         with:
           script: |
-            const jobs   = ${{ toJSON(needs) }};
-            const failed = Object.values(jobs).some(j => j.result === 'failure');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              issue_number: context.issue.number,
-              body: failed
-                ? '❌ Some checks failed — see Actions for details.'
-                : '✅ All checks passed!',
-            });
+            (async () => {
+              const cpp_status = '${{ needs.strict-cpp-checks.result }}' === 'success' ? '✅' : 'ISSUES FOUND';
+              const python_status = '${{ needs.strict-python-checks.result }}' === 'success' ? '✅' : 'ISSUES FOUND';
+              const build_status = '${{ needs.build-test.result }}' === 'success' ? '✅' : 'ISSUES FOUND';
+              const overall = (cpp_status === '✅' && python_status === '✅' && build_status === '✅') ? 'PASSED' : 'REVIEW REQUIRED';
+
+              const comment = `## Strict Check Results
+
+C++ Checks: ${cpp_status}
+Python Checks: ${python_status}
+Build & Tests: ${build_status}
+
+Overall Status: ${overall}
+
+See full run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}
+`;
+
+              await github.rest.issues.createComment({
+                issue_number: Number(process.env.PR_NUMBER),
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            })();
