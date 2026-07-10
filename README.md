@@ -149,5 +149,5 @@ I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-fre
 
 ## license
 
-MIT
+GPL-3.O
 
