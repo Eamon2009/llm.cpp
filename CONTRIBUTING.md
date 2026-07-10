@@ -1,6 +1,6 @@
-# Contributing to Quadtrix.cpp
+# Contributing to llm.cpp
 
-Thanks for helping improve Quadtrix.cpp. This project is a transformer learning lab with several execution paths: native C++ training and inference, PyTorch experiments, a FastAPI backend, and a React + TypeScript chat UI. Contributions are easiest to review when they keep those paths clear and testable.
+Thanks for helping improve llm.cpp. This project is a transformer with several execution paths: native C++ training and inference, PyTorch experiments.Contributions are easiest to review when they keep those paths clear and testable.
 
 ## Good First Contributions
 
@@ -22,8 +22,6 @@ If you cannot run a relevant check, mention that in the pull request and explain
 - Avoid committing generated artifacts unless the project already expects them.
 - Do not commit `.env` files, secrets, private datasets, or personal checkpoints.
 - Update `README.md`, `run.md`, or related docs when commands or behavior change.
-- Include screenshots or short notes for UI changes.
-- Mention any change that affects model files, ports, CORS, service workers, or packaging.
 
 The pull request template asks for:
 
