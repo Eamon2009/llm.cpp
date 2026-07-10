@@ -77,49 +77,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  macos-x64-cpu:
-    name: macOS Intel (x64) CPU
-    needs: release-metadata
-    runs-on: macos-13
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          clang++ -std=c++17 -O3 -DNDEBUG -arch x86_64 \
-            -I. -Iinclude \
-            -o llm main.cpp
-          file llm
-
-      - name: Smoke test
-        shell: bash
-        run: |
-          set +e
-          ./llm --chat >/dev/null 2>&1
-          exit 0
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-macos-x64-cpu
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
   ios-xcframework:
     name: iOS XCFramework
     needs: release-metadata
@@ -287,56 +244,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  ubuntu-s390x-cpu:
-    name: Ubuntu s390x (CPU)
-    needs: release-metadata
-    runs-on: ubuntu-24.04-s390x
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y build-essential file
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          g++ -std=c++17 -O3 -DNDEBUG \
-            -I. -Iinclude \
-            -o llm main.cpp
-          file llm
-
-      - name: Smoke test
-        shell: bash
-        run: |
-          set +e
-          ./llm --chat >/dev/null 2>&1
-          exit 0
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-s390x-cpu"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-ubuntu-s390x-cpu
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-s390x-cpu.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
   ubuntu-x64-vulkan:
     name: Ubuntu x64 (Vulkan)
     needs: release-metadata
@@ -436,118 +343,6 @@ jobs:
         with:
           name: llm.cpp-bin-ubuntu-arm64-vulkan
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
-  ubuntu-x64-rocm:
-    name: Ubuntu x64 (ROCm 7.2)
-    needs: release-metadata
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y build-essential file wget gnupg
-          wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
-          echo "deb [signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/debian jammy main" | sudo tee /etc/apt/sources.list.d/rocm.sources.list
-          sudo apt-get update
-          sudo apt-get install -y rocm-hip-sdk rocm-libs
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          source /opt/rocm/bin/rocm-path.sh
-          g++ -std=c++17 -O3 -DNDEBUG -DENABLE_ROCM \
-            -I. -Iinclude -I/opt/rocm/include \
-            -o llm main.cpp -L/opt/rocm/lib -lamdhip64
-          file llm
-
-      - name: Smoke test
-        shell: bash
-        run: |
-          set +e
-          ./llm --chat >/dev/null 2>&1
-          exit 0
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-rocm72"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-ubuntu-x64-rocm72
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-rocm72.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
-  ubuntu-x64-openvino:
-    name: Ubuntu x64 (OpenVINO)
-    needs: release-metadata
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y build-essential file
-          # Install OpenVINO
-          mkdir -p /opt/intel
-          cd /opt/intel
-          sudo wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2024.0/linux/l_openvino_toolkit_ubuntu22_2024.0.0.14009.8d3c3d50d44_x86_64.tgz
-          sudo tar -xzf l_openvino_toolkit_ubuntu22_2024.0.0.14009.8d3c3d50d44_x86_64.tgz
-          sudo ln -s openvino_2024.0.0.14009.8d3c3d50d44 openvino
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          source /opt/intel/openvino/setupvars.sh
-          g++ -std=c++17 -O3 -DNDEBUG -DENABLE_OPENVINO \
-            -I. -Iinclude \
-            -o llm main.cpp
-          file llm
-
-      - name: Smoke test
-        shell: bash
-        run: |
-          set +e
-          ./llm --chat >/dev/null 2>&1
-          exit 0
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-openvino"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-ubuntu-x64-openvino
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-openvino.tar.gz
           if-no-files-found: error
           retention-days: 30
 
@@ -796,86 +591,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  windows-arm64-opencl:
-    name: Windows arm64 (OpenCL Adreno)
-    needs: release-metadata
-    runs-on: windows-2022
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: pwsh
-        run: |
-          # Install OpenCL headers and libraries
-          choco install -y opencl-headers opencl-icd-loader
-
-      - name: Build
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64_arm64
-          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_OPENCL /EHsc /Iinclude /I. main.cpp /Fe:llm.exe /link OpenCL.lib
-
-      - name: Pack artifacts
-        shell: pwsh
-        run: |
-          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-opencl-adreno"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-windows-arm64-opencl-adreno
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-opencl-adreno.zip
-          if-no-files-found: error
-          retention-days: 30
-
-  windows-x64-cuda12:
-    name: Windows x64 (CUDA 12)
-    needs: release-metadata
-    runs-on: windows-2022
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install CUDA 12
-        shell: pwsh
-        run: |
-          choco install -y cuda --version=12.4
-
-      - name: Build
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          call "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin\nvcc.exe" --version
-          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\include" main.cpp /Fe:llm.exe /link "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\lib\x64\cudart.lib"
-
-      - name: Pack artifacts
-        shell: pwsh
-        run: |
-          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda12"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          # Copy CUDA runtime DLLs
-          Copy-Item "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin\cudart64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-windows-x64-cuda12
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda12.zip
-          if-no-files-found: error
-          retention-days: 30
-
   windows-x64-cuda13:
     name: Windows x64 (CUDA 13)
     needs: release-metadata
@@ -914,124 +629,6 @@ jobs:
         with:
           name: llm.cpp-bin-windows-x64-cuda13
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13.zip
-          if-no-files-found: error
-          retention-days: 30
-
-  windows-x64-vulkan:
-    name: Windows x64 (Vulkan)
-    needs: release-metadata
-    runs-on: windows-2022
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: pwsh
-        run: |
-          choco install -y vulkan-sdk
-
-      - name: Build
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          set VULKAN_SDK=C:\VulkanSDK\latest
-          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_VULKAN /EHsc /Iinclude /I. /I"%VULKAN_SDK%\Include" main.cpp /Fe:llm.exe /link "%VULKAN_SDK%\Lib\vulkan-1.lib"
-
-      - name: Pack artifacts
-        shell: pwsh
-        run: |
-          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-vulkan"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-windows-x64-vulkan
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-vulkan.zip
-          if-no-files-found: error
-          retention-days: 30
-
-  windows-x64-openvino:
-    name: Windows x64 (OpenVINO)
-    needs: release-metadata
-    runs-on: windows-2022
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: pwsh
-        run: |
-          choco install -y openvino
-
-      - name: Build
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_OPENVINO /EHsc /Iinclude /I. main.cpp /Fe:llm.exe
-
-      - name: Pack artifacts
-        shell: pwsh
-        run: |
-          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-openvino"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-windows-x64-openvino
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-openvino.zip
-          if-no-files-found: error
-          retention-days: 30
-
-  windows-x64-sycl:
-    name: Windows x64 (SYCL)
-    needs: release-metadata
-    runs-on: windows-2022
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: pwsh
-        run: |
-          # Download Intel SYCL for Windows
-          Invoke-WebRequest -Uri "https://github.com/intel/llvm/releases/download/nightly-2024-07-01/sycl_windows.zip" -OutFile "sycl_windows.zip"
-          Expand-Archive -Path "sycl_windows.zip" -DestinationPath "C:\intel-sycl"
-          echo "C:\intel-sycl\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Build
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          clang-cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_SYCL /EHsc /Iinclude /I. /fsycl /fsycl-targets=spir64 main.cpp /Fe:llm.exe
-
-      - name: Pack artifacts
-        shell: pwsh
-        run: |
-          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-sycl"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-windows-x64-sycl
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-sycl.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -1079,26 +676,17 @@ jobs:
     needs:
       - release-metadata
       - macos-arm64-cpu
-      - macos-x64-cpu
       - ios-xcframework
       - ubuntu-x64-cpu
       - ubuntu-arm64-cpu
-      - ubuntu-s390x-cpu
       - ubuntu-x64-vulkan
       - ubuntu-arm64-vulkan
-      - ubuntu-x64-rocm
-      - ubuntu-x64-openvino
       - ubuntu-x64-sycl-fp32
       - ubuntu-x64-sycl-fp16
       - android-arm64-cpu
       - windows-x64-cpu
       - windows-arm64-cpu
-      - windows-arm64-opencl
-      - windows-x64-cuda12
       - windows-x64-cuda13
-      - windows-x64-vulkan
-      - windows-x64-openvino
-      - windows-x64-sycl
       - windows-x64-hip
     runs-on: ubuntu-latest
     permissions:
@@ -1123,8 +711,6 @@ jobs:
           | Platform | Architecture | Status | Download |
           |----------|--------------|--------|----------|
           | macOS | Apple Silicon (arm64) | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu.tar.gz) |
-          | macOS | Apple Silicon (arm64, KleidiAI) | ❌ | DISABLED |
-          | macOS | Intel (x64) | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu.tar.gz) |
           | iOS | XCFramework | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz) |
 
           ### Linux
@@ -1133,11 +719,8 @@ jobs:
           |----------|--------------|---------|--------|----------|
           | Ubuntu | x64 | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cpu.tar.gz) |
           | Ubuntu | arm64 | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-cpu.tar.gz) |
-          | Ubuntu | s390x | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-s390x-cpu.tar.gz) |
           | Ubuntu | x64 | Vulkan | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan.tar.gz) |
           | Ubuntu | arm64 | Vulkan | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz) |
-          | Ubuntu | x64 | ROCm 7.2 | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-rocm72.tar.gz) |
-          | Ubuntu | x64 | OpenVINO | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-openvino.tar.gz) |
           | Ubuntu | x64 | SYCL FP32 | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32.tar.gz) |
           | Ubuntu | x64 | SYCL FP16 | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz) |
 
@@ -1153,13 +736,9 @@ jobs:
           |----------|--------------|---------|--------|----------|
           | Windows | x64 | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cpu.zip) |
           | Windows | arm64 | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu.zip) |
-          | Windows | arm64 | OpenCL Adreno | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-opencl-adreno.zip) |
-          | Windows | x64 | CUDA 12 (12.4 DLLs) | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda12.zip) |
           | Windows | x64 | CUDA 13 (13.3 DLLs) | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13.zip) |
-          | Windows | x64 | Vulkan | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-vulkan.zip) |
-          | Windows | x64 | OpenVINO | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-openvino.zip) |
-          | Windows | x64 | SYCL | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-sycl.zip) |
           | Windows | x64 | HIP | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-hip.zip) |
+
 
 
       - name: Publish release
