@@ -632,45 +632,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  windows-x64-hip:
-    name: Windows x64 (HIP)
-    needs: release-metadata
-    runs-on: windows-2022
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: pwsh
-        run: |
-          choco install -y rocm
-
-      - name: Build
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          set HIP_PATH=C:\rocm
-          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_HIP /EHsc /Iinclude /I. /I"%HIP_PATH%\include" main.cpp /Fe:llm.exe /link "%HIP_PATH%\lib\amdhip64.lib"
-
-      - name: Pack artifacts
-        shell: pwsh
-        run: |
-          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-hip"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-windows-x64-hip
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-hip.zip
-          if-no-files-found: error
-          retention-days: 30
-
   publish-release:
     name: Publish GitHub release
     needs:
@@ -687,7 +648,6 @@ jobs:
       - windows-x64-cpu
       - windows-arm64-cpu
       - windows-x64-cuda13
-      - windows-x64-hip
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -710,36 +670,44 @@ jobs:
 
           | Platform | Architecture | Status | Download |
           |----------|--------------|--------|----------|
-          | macOS | Apple Silicon (arm64) | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu.tar.gz) |
-          | iOS | XCFramework | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz) |
+          | macOS | Apple Silicon (arm64) | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu.tar.gz) |
+          | iOS | XCFramework | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz) |
 
           ### Linux
 
           | Platform | Architecture | Variant | Status | Download |
           |----------|--------------|---------|--------|----------|
-          | Ubuntu | x64 | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cpu.tar.gz) |
-          | Ubuntu | arm64 | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-cpu.tar.gz) |
-          | Ubuntu | x64 | Vulkan | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan.tar.gz) |
-          | Ubuntu | arm64 | Vulkan | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz) |
-          | Ubuntu | x64 | SYCL FP32 | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32.tar.gz) |
-          | Ubuntu | x64 | SYCL FP16 | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz) |
+          | Ubuntu | x64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cpu.tar.gz) |
+          | Ubuntu | arm64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-cpu.tar.gz) |
+          | Ubuntu | x64 | Vulkan | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan.tar.gz) |
+          | Ubuntu | arm64 | Vulkan | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz) |
+          | Ubuntu | x64 | SYCL FP32 | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32.tar.gz) |
+          | Ubuntu | x64 | SYCL FP16 | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz) |
 
           ### Android
 
           | Platform | Architecture | Variant | Status | Download |
           |----------|--------------|---------|--------|----------|
-          | Android | arm64 | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz) |
+          | Android | arm64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz) |
 
           ### Windows
 
           | Platform | Architecture | Variant | Status | Download |
           |----------|--------------|---------|--------|----------|
-          | Windows | x64 | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cpu.zip) |
-          | Windows | arm64 | CPU | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu.zip) |
-          | Windows | x64 | CUDA 13 (13.3 DLLs) | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13.zip) |
-          | Windows | x64 | HIP | ✅ | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-hip.zip) |
+          | Windows | x64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cpu.zip) |
+          | Windows | arm64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu.zip) |
+          | Windows | x64 | CUDA 13 (13.3 DLLs) | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13.zip) |
 
+          ## Legend
 
+          - Built = Available for download
+          - Disabled = Not built
+          - Skipped = Not included in this release
+
+          ---
+
+          For detailed build information and installation instructions, please refer to the [README](../../).
+          EOF
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
