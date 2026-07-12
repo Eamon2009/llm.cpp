@@ -1,7 +1,8 @@
 # llm.cpp
 
 <h1 align="center">
-<img  width="957" height="233" alt="image" src="https://github.com/user-attachments/assets/bf4511d8-4fb4-449c-b8e7-e936e4d8d164" />
+<img width="957" height="234" alt="image" src="https://github.com/user-attachments/assets/2aa847d2-9dea-4d6d-8b78-6e3ad4798b65" />
+
 </h1>
 
 [![Build & Test](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml)  [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) [![Release](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml) [![Linting](https://github.com/LMGNU/llm.cpp/actions/workflows/test.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/test.yml) [![CI Approval](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml)
