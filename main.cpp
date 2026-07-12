@@ -1,23 +1,26 @@
-#include <iostream>
-#include <iomanip>
-#include <string>
-#include <vector>
-#include <chrono>
-#include <ctime>
-#include <csignal>
-#include <algorithm>
-#include <cstdlib>
-#include <fstream>
-#include <stdexcept>
-
 #include "config/config.h"
+#include "include/backward.h"
 #include "include/dataloader.h"
 #include "include/gpt.h"
-#include "include/backward.h"
+
+#include <algorithm>
+#include <chrono>
+#include <csignal>
+#include <cstdlib>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 // Signal handler (Ctrl-C stops generation gracefully)
 static volatile bool g_interrupted = false;
-static void sig_handler(int) { g_interrupted = true; }
+static void sig_handler(int)
+{
+      g_interrupted = true;
+}
 
 // Timing helpers
 static std::string now_str()
@@ -69,8 +72,7 @@ static std::string join_path(const std::string &base, const std::string &child)
       return base + "/" + child;
 }
 
-static std::string choose_existing_path(const std::string &requested_path,
-                                        const std::string &argv0)
+static std::string choose_existing_path(const std::string &requested_path, const std::string &argv0)
 {
       if (requested_path.empty())
             return requested_path;
@@ -91,8 +93,7 @@ static std::string choose_existing_path(const std::string &requested_path,
       return requested_path;
 }
 
-static std::string choose_output_path(const std::string &requested_path,
-                                      const std::string &argv0)
+static std::string choose_output_path(const std::string &requested_path, const std::string &argv0)
 {
       if (requested_path.empty() || is_absolute_path(requested_path))
             return requested_path;
@@ -104,9 +105,7 @@ static std::string choose_output_path(const std::string &requested_path,
 }
 
 // sample N tokens from the model and print them
-static void sample_tokens(GPTLanguageModel &model,
-                          DataLoader &dl,
-                          int n_tokens)
+static void sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens)
 {
       std::vector<int> ctx = {0};
       for (int i = 0; i < n_tokens; ++i)
@@ -120,38 +119,33 @@ static void sample_tokens(GPTLanguageModel &model,
 }
 
 // estimate loss — no gradients, training=false
-static float estimate_loss(GPTLanguageModel &model,
-                           DataLoader &dl,
-                           const std::string &split,
-                           std::mt19937 &rng)
+static float
+estimate_loss(GPTLanguageModel &model, DataLoader &dl, const std::string &split, std::mt19937 &rng)
 {
       float total = 0.0f;
       for (int k = 0; k < EVAL_ITERS; ++k)
       {
             std::pair<std::vector<int>, std::vector<int>> batch =
-                dl.get_batch(split, BATCH_SIZE, BLOCK_SIZE, rng);
+                  dl.get_batch(split, BATCH_SIZE, BLOCK_SIZE, rng);
             std::pair<Tensor, float> result =
-                model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false);
+                  model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false);
             total += result.second;
       }
       return total / EVAL_ITERS;
 }
 
 // Chat window
-static void run_chat(GPTLanguageModel &model,
-                     DataLoader &dl,
-                     int max_new_tokens)
+static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens)
 {
-      std::cout << "\n"
-                << std::string(60, '=') << "\n";
-      std::cout << "  Quadtrix CHAT MODE\n";
+      std::cout << "\n" << std::string(60, '=') << "\n";
+      std::cout << "  llm.cpp CHAT MODE\n";
       std::cout << "  Type your prompt and press Enter. "
                    "Type 'quit' or 'exit' to leave.\n";
       std::cout << std::string(60, '=') << "\n\n";
 
       while (!g_interrupted)
       {
-            std::cout << "\033[1;32mYou>\033[0m ";
+            std::cout << "\033[1;32muser>\033[0m ";
             std::cout.flush();
 
             std::string prompt;
@@ -179,7 +173,7 @@ static void run_chat(GPTLanguageModel &model,
             if ((int)ctx.size() > BLOCK_SIZE)
                   ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
 
-            std::cout << "\033[1;36mQuadtrix>\033[0m ";
+            std::cout << "\033[1;36mllm>\033[0m ";
             std::cout.flush();
 
             for (int tok = 0; tok < max_new_tokens && !g_interrupted; ++tok)
@@ -200,7 +194,7 @@ int main(int argc, char *argv[])
       std::signal(SIGINT, sig_handler);
 
       // Banner
-      std::cout << " Quadtrix v1.0 (C++)\n";
+      std::cout << "llm.cpp\n";
 
       std::string data_path = DEFAULT_CLEANED_PATH;
       const char *env_data_path = std::getenv(DATA_PATH_ENV_VAR.c_str());
@@ -242,8 +236,8 @@ int main(int argc, char *argv[])
       {
             std::cerr << e.what() << "\n";
             std::cerr << "[HINT]  Put your text at " << DEFAULT_CLEANED_PATH
-                      << ", pass a file path as the first argument, or set "
-                      << DATA_PATH_ENV_VAR << ".\n";
+                      << ", pass a file path as the first argument, or set " << DATA_PATH_ENV_VAR
+                      << ".\n";
             return 1;
       }
       GPTLanguageModel model(dl.vocab_size, N_EMBD, N_HEAD, N_LAYER, BLOCK_SIZE, SEED);
@@ -326,23 +320,24 @@ int main(int argc, char *argv[])
 
             // train step
             std::pair<std::vector<int>, std::vector<int>> batch =
-                dl.get_batch("train", BATCH_SIZE, BLOCK_SIZE, rng);
+                  dl.get_batch("train", BATCH_SIZE, BLOCK_SIZE, rng);
 
             SavedForward saved = forward_save(model,
-                                              batch.first, BATCH_SIZE, BLOCK_SIZE,
-                                              batch.second, /*training=*/true);
+                                              batch.first,
+                                              BATCH_SIZE,
+                                              BLOCK_SIZE,
+                                              batch.second,
+                                              /*training=*/true);
 
-            float batch_loss = model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE,
-                                             batch.second, false)
-                                   .second;
+            float batch_loss =
+                  model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false).second;
 
             Grads grads = backward(model, saved);
             apply_grads(model, grads, opt);
 
             double step_ms = (wall_secs() - step_start) * 1000.0;
-            int tok_per_sec = (step_ms > 0.0)
-                                  ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0))
-                                  : 0;
+            int tok_per_sec =
+                  (step_ms > 0.0) ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0)) : 0;
 
             // every EVAL_INTERVAL steps: compute val, save if best, sample
             bool better = false;
@@ -358,20 +353,12 @@ int main(int argc, char *argv[])
             }
 
             // print every step
-            std::cout
-                << "step"
-                << std::setw(5) << iter << "/" << MAX_ITERS
-                << " | loss "
-                << std::fixed << std::setprecision(6) << batch_loss
-                << " | val "
-                << std::fixed << std::setprecision(6) << last_val_loss
-                << " | lr "
-                << std::scientific << std::setprecision(2) << (float)LEARNING_RATE
-                << " | "
-                << std::fixed << std::setprecision(2) << step_ms << " ms"
-                << " | " << tok_per_sec << " tok/s"
-                << (better ? "  *best*" : "")
-                << "\n";
+            std::cout << "step" << std::setw(5) << iter << "/" << MAX_ITERS << " | loss "
+                      << std::fixed << std::setprecision(6) << batch_loss << " | val " << std::fixed
+                      << std::setprecision(6) << last_val_loss << " | lr " << std::scientific
+                      << std::setprecision(2) << (float)LEARNING_RATE << " | " << std::fixed
+                      << std::setprecision(2) << step_ms << " ms"
+                      << " | " << tok_per_sec << " tok/s" << (better ? "  *best*" : "") << "\n";
             std::cout.flush();
 
             // sample after every eval window
