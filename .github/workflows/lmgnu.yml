@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     
     environment:
-      name: ci-approval
+      name: lmgnu
       
     steps:
     - name: Checkout Code with Full History
