@@ -152,5 +152,5 @@ I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-fre
 
 ## license
 
-GPL-3.O
+GPL-3.0
 
