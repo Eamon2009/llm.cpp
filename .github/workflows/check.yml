@@ -3,8 +3,16 @@ name: Syntax Check
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - "**/*.py"
+      - "**/*.cpp"
+      - "**/*.c"
   pull_request:
     branches: [ "master" ]
+    paths:
+      - "**/*.py"
+      - "**/*.cpp"
+      - "**/*.c"
 
 jobs:
   syntax-check:
@@ -14,6 +22,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # --- Python Syntax Check ---
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -26,9 +35,10 @@ jobs:
 
     - name: Lint Python Files
       run: |
-        # E999, F821, F822, F823 catch syntax, undefined names, and name errors
+        # Only checks syntax and severe errors
         flake8 . --count --select=E999,F821,F822,F823 --show-source --statistics
 
+    # --- C/C++ Syntax Check ---
     - name: Install C/C++ Compiler (GCC)
       run: |
         sudo apt-get update
@@ -39,26 +49,25 @@ jobs:
         echo "Checking C and C++ files for syntax errors..."
         errors=0
         
-        # Find and check all .c files
-        find . -name "*.c" | while read -r file; do
+        # Using redirect loops to properly catch errors without subshell issues
+        while read -r file; do
+          if [ -z "$file" ]; then continue; fi
           echo "Checking $file"
-          # -fsyntax-only checks syntax without compiling/linking an executable
           if ! gcc -fsyntax-only "$file"; then
-            echo " Syntax error in $file"
-            errors=$((errors + 1))
-          fi
-        done
-
-        # Find and check all .cpp files
-        find . -name "*.cpp" | while read -r file; do
-          echo "Checking $file"
-          if ! g++ -fsyntax-only "$file"; then
             echo "Syntax error in $file"
             errors=$((errors + 1))
           fi
-        done
+        done < <(find . -name "*.c")
 
-        # If any errors were found, fail the workflow
+        while read -r file; do
+          if [ -z "$file" ]; then continue; fi
+          echo "Checking $file"
+          if ! g++ -fsyntax-only "$file"; then
+            echo "syntax error in $file"
+            errors=$((errors + 1))
+          fi
+        done < <(find . -name "*.cpp")
+
         if [ $errors -ne 0 ]; then
           echo "$errors file(s) failed syntax verification."
           exit 1
