@@ -18,7 +18,7 @@ jobs:
       contains(github.event.comment.body, '/run-checks') &&
       (
         github.event.comment.author_association == 'OWNER' ||
-        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'MEMBER'
       )
     outputs:
       pr_number: ${{ github.event.issue.number }}
@@ -63,7 +63,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-format clang-tidy cppcheck build-essential cmake g++ clang
 
-      # ... (other steps unchanged) ...
       - name: Run clang-format check (strict)
         id: clang-format
         run: |
@@ -81,7 +80,6 @@ jobs:
           else
             echo "No C++ files found" >> $GITHUB_STEP_SUMMARY
           fi
-        continue-on-error: true
 
   strict-python-checks:
     runs-on: ubuntu-latest
@@ -93,12 +91,10 @@ jobs:
           ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/merge
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-
-      # ... (other steps unchanged) ...
 
   build-test:
     runs-on: ubuntu-latest
@@ -114,12 +110,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake build-essential g++ clang
 
-      # ... (other steps unchanged) ...
-
   summary:
     runs-on: ubuntu-latest
-    needs: [strict-cpp-checks, strict-python-checks, build-test]
-    if: always()
+    needs: [check-trigger, strict-cpp-checks, strict-python-checks, build-test]
+    if: always() && needs.check-trigger.result == 'success'
     env:
       PR_NUMBER: ${{ needs.check-trigger.outputs.pr_number }}
     steps:
@@ -128,21 +122,21 @@ jobs:
         with:
           script: |
             (async () => {
-              const cpp_status = '${{ needs.strict-cpp-checks.result }}' === 'success' ? '✅' : 'ISSUES FOUND';
-              const python_status = '${{ needs.strict-python-checks.result }}' === 'success' ? '✅' : 'ISSUES FOUND';
-              const build_status = '${{ needs.build-test.result }}' === 'success' ? '✅' : 'ISSUES FOUND';
+              const cpp_status = '${{ needs.strict-cpp-checks.result }}' === 'success' ? '✅' : '❌ ISSUES FOUND';
+              const python_status = '${{ needs.strict-python-checks.result }}' === 'success' ? '✅' : '❌ ISSUES FOUND';
+              const build_status = '${{ needs.build-test.result }}' === 'success' ? '✅' : '❌ ISSUES FOUND';
               const overall = (cpp_status === '✅' && python_status === '✅' && build_status === '✅') ? 'PASSED' : 'REVIEW REQUIRED';
 
               const comment = `## Strict Check Results
 
-C++ Checks: ${cpp_status}
-Python Checks: ${python_status}
-Build & Tests: ${build_status}
+            C++ Checks: ${cpp_status}
+            Python Checks: ${python_status}
+            Build & Tests: ${build_status}
 
-Overall Status: ${overall}
+            Overall Status: ${overall}
 
-See full run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}
-`;
+            See full run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}
+            `;
 
               await github.rest.issues.createComment({
                 issue_number: Number(process.env.PR_NUMBER),
