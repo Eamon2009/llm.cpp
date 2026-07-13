@@ -474,7 +474,7 @@ def main() -> int:
         return 0
     except ImportError as exc:
         print(f"Missing Python benchmark dependency: {exc}", file=sys.stderr)
-        print("Install the engine requirements, including torch and tiktoken.", file=sys.stderr
+        print("Install the engine requirements, including torch and tiktoken.", file=sys.stderr)
         return 2
 
 
