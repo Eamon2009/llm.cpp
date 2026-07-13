@@ -1,10 +1,11 @@
 # llm.cpp
 
 <h1 align="center">
-<img  width="957" height="233" alt="image" src="https://github.com/user-attachments/assets/bf4511d8-4fb4-449c-b8e7-e936e4d8d164" />
+<img width="957" height="234" alt="image" src="https://github.com/user-attachments/assets/2aa847d2-9dea-4d6d-8b78-6e3ad4798b65" />
+
 </h1>
 
-[![Build & Test](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml)  [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) [![Release](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml) 
+[![Build & Test](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml)  [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) [![Release](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml) [![Linting](https://github.com/LMGNU/llm.cpp/actions/workflows/test.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/test.yml) [![CI Approval](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml)
 
 Language models in dependency-free C++, with no need for PyTorch or Python to make a transformer actually works. The native path is a decoder-only GPT: tensors, embeddings, multi-head causal self-attention, layer norm, cross-entropy, and a analytical backward pass with AdamW, all in [main.cpp](main.cpp) and [include/](include/). No autograd, no framework - every gradient is derived and written out.
 
@@ -152,5 +153,5 @@ I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-fre
 
 ## license
 
-GPL-3.O
+GPL-3.0
 

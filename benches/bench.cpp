@@ -1,9 +1,9 @@
-// Real C++ benchmark suite for Quadtrix.cpp.
+// Real C++ benchmark suite for llm.cpp.
 //
 #include "../config/config.h"
-#include "../LMGNU/backward.h"
-#include "../LMGNU/dataloader.h"
-#include "../LMGNU/gpt.h"
+#include "../include/backward.h"
+#include "../include/dataloader.h"
+#include "../include/gpt.h"
 
 #include <algorithm>
 #include <chrono>
@@ -584,7 +584,7 @@ static Options parse_args(int argc, char **argv)
 int main(int argc, char **argv)
 {
       Options opt = parse_args(argc, argv);
-      std::cout << "Quadtrix C++ Benchmark\n";
+      std::cout << "llm.cpp Benchmark\n";
       std::cout << "Runs: " << opt.runs << ", warmup: " << opt.warmup << "\n";
 
       DataLoader dl;
