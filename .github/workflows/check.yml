@@ -1,0 +1,66 @@
+name: Syntax Check
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  syntax-check:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Install Python Linter
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8
+
+    - name: Lint Python Files
+      run: |
+        # E999, F821, F822, F823 catch syntax, undefined names, and name errors
+        flake8 . --count --select=E999,F821,F822,F823 --show-source --statistics
+
+    - name: Install C/C++ Compiler (GCC)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc g++
+
+    - name: Check C/C++ Syntax
+      run: |
+        echo "Checking C and C++ files for syntax errors..."
+        errors=0
+        
+        # Find and check all .c files
+        find . -name "*.c" | while read -r file; do
+          echo "Checking $file"
+          # -fsyntax-only checks syntax without compiling/linking an executable
+          if ! gcc -fsyntax-only "$file"; then
+            echo " Syntax error in $file"
+            errors=$((errors + 1))
+          fi
+        done
+
+        # Find and check all .cpp files
+        find . -name "*.cpp" | while read -r file; do
+          echo "Checking $file"
+          if ! g++ -fsyntax-only "$file"; then
+            echo "Syntax error in $file"
+            errors=$((errors + 1))
+          fi
+        done
+
+        # If any errors were found, fail the workflow
+        if [ $errors -ne 0 ]; then
+          echo "$errors file(s) failed syntax verification."
+          exit 1
+        fi
+        echo "All C, C++, and Python files passed syntax checks!"
