@@ -1,29 +1,10 @@
 #pragma once
-// ============================================================
-//  include/backward.h  –  Full analytical backpropagation
-//
-//  Implements exact gradients for every operation in the GPT:
-//    cross-entropy → lm_head → layernorm → N × Block →
-//    (layernorm → MHA → residual, layernorm → FFN → residual) →
-//    token+position embeddings
-//
-//  Each backward_* function:
-//    - receives dOut  (gradient of loss w.r.t. this layer's output)
-//    - receives saved activations from the forward pass
-//    - fills gradients into Grad structs (mirroring weight layout)
-//    - returns dX     (gradient of loss w.r.t. this layer's input)
-// ============================================================
-
-#include "tensor.h"
 #include "config/config.h"
-#include <vector>
-#include <cmath>
+#include "tensor.h"
+
 #include <cassert>
-
-// =============================================================
-// Gradient stores (one per learnable weight tensor)
-// ============================================================
-
+#include <cmath>
+#include <vector>
 struct GradLinear
 {
       Tensor dW; // same shape as weight [in, out]
@@ -32,9 +13,9 @@ struct GradLinear
 
       GradLinear() : has_bias(false) {}
       GradLinear(int in_f, int out_f, bool bias)
-          : dW({in_f, out_f}, 0.0f),
-            db(bias ? Tensor({out_f}, 0.0f) : Tensor()),
-            has_bias(bias) {}
+            : dW({in_f, out_f}, 0.0f), db(bias ? Tensor({out_f}, 0.0f) : Tensor()), has_bias(bias)
+      {
+      }
 
       void zero()
       {
@@ -49,7 +30,10 @@ struct GradEmbedding
       Tensor dW; // [num_embeddings, embedding_dim]
       GradEmbedding() = default;
       GradEmbedding(int n, int d) : dW({n, d}, 0.0f) {}
-      void zero() { dW.fill(0.0f); }
+      void zero()
+      {
+            dW.fill(0.0f);
+      }
 };
 
 struct GradLayerNorm
@@ -70,9 +54,9 @@ struct GradHead
       GradLinear dkey, dquery, dvalue;
       GradHead() = default;
       GradHead(int n_embd, int hs)
-          : dkey(n_embd, hs, false),
-            dquery(n_embd, hs, false),
-            dvalue(n_embd, hs, false) {}
+            : dkey(n_embd, hs, false), dquery(n_embd, hs, false), dvalue(n_embd, hs, false)
+      {
+      }
       void zero()
       {
             dkey.zero();
@@ -86,8 +70,7 @@ struct GradMHA
       std::vector<GradHead> heads;
       GradLinear proj;
       GradMHA() = default;
-      GradMHA(int n_embd, int n_head, int hs)
-          : proj(n_head * hs, n_embd, true)
+      GradMHA(int n_embd, int n_head, int hs) : proj(n_head * hs, n_embd, true)
       {
             for (int i = 0; i < n_head; ++i)
                   heads.emplace_back(n_embd, hs);
@@ -104,9 +87,7 @@ struct GradFFN
 {
       GradLinear dfc1, dfc2;
       GradFFN() = default;
-      GradFFN(int n_embd)
-          : dfc1(n_embd, 4 * n_embd, true),
-            dfc2(4 * n_embd, n_embd, true) {}
+      GradFFN(int n_embd) : dfc1(n_embd, 4 * n_embd, true), dfc2(4 * n_embd, n_embd, true) {}
       void zero()
       {
             dfc1.zero();
@@ -121,10 +102,9 @@ struct GradBlock
       GradLayerNorm ln1, ln2;
       GradBlock() = default;
       GradBlock(int n_embd, int n_head, int hs)
-          : sa(n_embd, n_head, hs),
-            ffwd(n_embd),
-            ln1(n_embd),
-            ln2(n_embd) {}
+            : sa(n_embd, n_head, hs), ffwd(n_embd), ln1(n_embd), ln2(n_embd)
+      {
+      }
       void zero()
       {
             sa.zero();
@@ -142,12 +122,9 @@ struct Grads
       GradLinear lm_head;
 
       Grads() = default;
-      Grads(int vocab_size, int n_embd, int n_head, int n_layer,
-            int block_size)
-          : tok_emb(vocab_size, n_embd),
-            pos_emb(block_size, n_embd),
-            ln_f(n_embd),
-            lm_head(n_embd, vocab_size, true)
+      Grads(int vocab_size, int n_embd, int n_head, int n_layer, int block_size)
+            : tok_emb(vocab_size, n_embd), pos_emb(block_size, n_embd), ln_f(n_embd),
+              lm_head(n_embd, vocab_size, true)
       {
             int hs = n_embd / n_head;
             for (int i = 0; i < n_layer; ++i)
@@ -164,11 +141,6 @@ struct Grads
             lm_head.zero();
       }
 };
-
-// ============================================================
-// Saved activations from the forward pass
-// (we need these to compute gradients)
-// ============================================================
 
 struct SavedHead
 {
@@ -203,7 +175,7 @@ struct SavedLN
 {
       Tensor x;                              // input  [B, T, C]
       Tensor xhat;                           // normalized, before gamma/beta [B,T,C]
-      Tensor inv_std;                        // 1/sqrt(var+eps) per row  stored as [B, T, 1] → flat
+      Tensor inv_std;                        // 1/sqrt(var+eps) per row  stored as [B, T, 1] flat
       std::vector<float> mu_vec, invstd_vec; // [B*T] each
 };
 
@@ -235,15 +207,7 @@ struct SavedForward
       Tensor logits2d; // [B*T, V]
       std::vector<int> targets;
 };
-
-// ============================================================
-// Primitive backward ops
-// ============================================================
-
-// ---- cross-entropy backward ---------------------------------
-// dlogits [B*T, V]:  softmax(logits) - one_hot(targets)  / BT
-inline Tensor backward_cross_entropy(const Tensor &logits2d,
-                                     const std::vector<int> &targets)
+inline Tensor backward_cross_entropy(const Tensor &logits2d, const std::vector<int> &targets)
 {
       int BT = logits2d.shape[0], V = logits2d.shape[1];
       Tensor dlogits({BT, V}, 0.0f);
@@ -270,7 +234,7 @@ inline Tensor backward_cross_entropy(const Tensor &logits2d,
       return dlogits;
 }
 
-// ---- linear backward  [B,T,out] → [B,T,in] -----------------
+// ---- linear backward  [B,T,out] [B,T,in] -----------------
 // dOut [B,T,E],  x [B,T,D],  W [D,E]  (bias grad trivially = sum over B,T)
 // Returns dX [B,T,D];  accumulates into gW [D,E] and gb [E]
 inline Tensor backward_linear(const Tensor &dOut, // [B, T, E]
@@ -311,7 +275,7 @@ inline Tensor backward_linear(const Tensor &dOut, // [B, T, E]
       return dX;
 }
 
-// ---- layer-norm backward  [B,T,C] → [B,T,C] ----------------
+// ---- layer-norm backward  [B,T,C] [B,T,C] ----------------
 // Gradient of LayerNorm as derived in the original Ba et al. paper.
 inline Tensor backward_layernorm(const Tensor &dOut, // [B, T, C]
                                  const SavedLN &saved,
@@ -350,8 +314,9 @@ inline Tensor backward_layernorm(const Tensor &dOut, // [B, T, C]
                   for (int c = 0; c < C; ++c)
                   {
                         float xhat_c = saved.xhat.at(b, t, c);
-                        dX.at(b, t, c) = inv_std / C *
-                                         (C * gamma.at(c) * dOut.at(b, t, c) - sum1 - xhat_c * sum2);
+                        dX.at(b, t, c) =
+                              inv_std / C *
+                              (C * gamma.at(c) * dOut.at(b, t, c) - sum1 - xhat_c * sum2);
                   }
             }
       }
@@ -381,12 +346,11 @@ inline Tensor backward_dropout(const Tensor &dOut,
       return dX;
 }
 
-// ---- batched matmul backward  [B,T,D] x [B,D,T2] → [B,T,T2] --
+// ---- batched matmul backward  [B,T,D] x [B,D,T2] [B,T,T2] --
 // da = dOut @ b^T,   db = a^T @ dOut   (both accumulated)
-inline std::pair<Tensor, Tensor>
-backward_bmm(const Tensor &dOut, // [B, T, T2]
-             const Tensor &a,    // [B, T,  D]
-             const Tensor &b)
+inline std::pair<Tensor, Tensor> backward_bmm(const Tensor &dOut, // [B, T, T2]
+                                              const Tensor &a,    // [B, T,  D]
+                                              const Tensor &b)
 { // [B, D, T2]
       int B = dOut.shape[0], T = dOut.shape[1], T2 = dOut.shape[2];
       int D = a.shape[2];
@@ -437,10 +401,9 @@ inline Tensor backward_softmax3d(const Tensor &dwei, // [B, T, T]
       return dpre;
 }
 
-// ---- cat_last backward  [B,T,D_total] → slice per head ------
-inline std::vector<Tensor>
-backward_cat_last(const Tensor &dConcat,
-                  const std::vector<int> &head_sizes)
+// ---- cat_last backward  [B,T,D_total] slice per head ------
+inline std::vector<Tensor> backward_cat_last(const Tensor &dConcat,
+                                             const std::vector<int> &head_sizes)
 {
       int B = dConcat.shape[0], T = dConcat.shape[1];
       std::vector<Tensor> out;
@@ -458,11 +421,6 @@ backward_cat_last(const Tensor &dConcat,
       return out;
 }
 
-// ============================================================
-// Forward pass WITH activation saving
-// ============================================================
-
-// ---- saved layernorm forward --------------------------------
 inline Tensor forward_ln_save(const Tensor &x,
                               const Tensor &gamma,
                               const Tensor &beta,
@@ -572,8 +530,8 @@ inline Tensor forward_mha_save(const Tensor &x,
       sm.heads.resize(n_head);
       std::vector<Tensor> head_outs(n_head);
       for (int h = 0; h < n_head; ++h)
-            head_outs[h] = forward_head_save(x, Wks[h], Wqs[h], Wvs[h],
-                                             training, drop_p, rng, sm.heads[h]);
+            head_outs[h] =
+                  forward_head_save(x, Wks[h], Wqs[h], Wvs[h], training, drop_p, rng, sm.heads[h]);
 
       sm.concat = cat_last(head_outs); // [B,T, n_head*hs]
       sm.proj_out = matmul(sm.concat, Wp);
@@ -599,8 +557,10 @@ inline Tensor forward_mha_save(const Tensor &x,
 
 // ---- saved FFN forward --------------------------------------
 inline Tensor forward_ffn_save(const Tensor &x,
-                               const Tensor &W1, const Tensor &b1,
-                               const Tensor &W2, const Tensor &b2,
+                               const Tensor &W1,
+                               const Tensor &b1,
+                               const Tensor &W2,
+                               const Tensor &b2,
                                bool training,
                                float drop_p,
                                std::mt19937 &rng,
@@ -630,14 +590,12 @@ inline Tensor forward_ffn_save(const Tensor &x,
       return out;
 }
 
-// ============================================================
-// Full model forward with all activations saved
-// ============================================================
 #include "gpt.h" // for GPTLanguageModel layout
 
 inline SavedForward forward_save(GPTLanguageModel &model,
                                  const std::vector<int> &idx,
-                                 int B, int T,
+                                 int B,
+                                 int T,
                                  const std::vector<int> &targets,
                                  bool training)
 {
@@ -649,7 +607,7 @@ inline SavedForward forward_save(GPTLanguageModel &model,
       int C = model.n_embd;
       int V = model.vocab_size;
 
-      // ── Embeddings ───────────────────────────────────────────
+      //  Embeddings
       s.tok_out = model.token_emb.forward(idx, B, T);
       s.pos_out = model.pos_emb.forward_pos(T);
       s.emb_sum = Tensor({B, T, C});
@@ -658,7 +616,7 @@ inline SavedForward forward_save(GPTLanguageModel &model,
                   for (int d = 0; d < C; ++d)
                         s.emb_sum.at(b, t, d) = s.tok_out.at(b, t, d) + s.pos_out.at(0, t, d);
 
-      // ── Transformer blocks ───────────────────────────────────
+      //  Transformer blocks
       s.blocks.resize(model.n_layer);
       Tensor x = s.emb_sum;
       for (int l = 0; l < model.n_layer; ++l)
@@ -682,29 +640,38 @@ inline SavedForward forward_save(GPTLanguageModel &model,
             }
 
             Tensor attn = forward_mha_save(x_ln1,
-                                           Wks, Wqs, Wvs,
+                                           Wks,
+                                           Wqs,
+                                           Wvs,
                                            blk.sa.proj.weight,
                                            blk.sa.proj.bias,
-                                           n_head, training, DROPOUT,
-                                           model.rng, sb.mha);
+                                           n_head,
+                                           training,
+                                           DROPOUT,
+                                           model.rng,
+                                           sb.mha);
             sb.x_after_mha = add(x, attn); // residual
 
             // LN2 + FFN + residual
-            Tensor x_ln2 = forward_ln_save(sb.x_after_mha,
-                                           blk.ln2.gamma, blk.ln2.beta, sb.ln2);
+            Tensor x_ln2 = forward_ln_save(sb.x_after_mha, blk.ln2.gamma, blk.ln2.beta, sb.ln2);
             Tensor ffn = forward_ffn_save(x_ln2,
-                                          blk.ffwd.fc1.weight, blk.ffwd.fc1.bias,
-                                          blk.ffwd.fc2.weight, blk.ffwd.fc2.bias,
-                                          training, DROPOUT, model.rng, sb.ffn);
+                                          blk.ffwd.fc1.weight,
+                                          blk.ffwd.fc1.bias,
+                                          blk.ffwd.fc2.weight,
+                                          blk.ffwd.fc2.bias,
+                                          training,
+                                          DROPOUT,
+                                          model.rng,
+                                          sb.ffn);
             x = add(sb.x_after_mha, ffn);
       }
 
-      // ── Final LN + lm_head ───────────────────────────────────
+      //  Final LN + lm_head
       s.lm_in = forward_ln_save(x, model.ln_f.gamma, model.ln_f.beta, s.ln_f);
       s.logits3d = matmul(s.lm_in, model.lm_head.weight);
       s.logits3d = add_bias(s.logits3d, model.lm_head.bias);
 
-      // reshape [B,T,V] → [B*T, V]
+      // reshape [B,T,V] [B*T, V]
       s.logits2d = Tensor({B * T, V});
       for (int i = 0; i < B * T; ++i)
             for (int v = 0; v < V; ++v)
@@ -725,7 +692,7 @@ inline Grads backward(GPTLanguageModel &model, const SavedForward &s)
 
       Grads g(V, C, n_head, model.n_layer, model.block_size);
 
-      // ── dLoss / dLogits  [B*T, V] ────────────────────────────
+      // dLoss / dLogits  [B*T, V]
       Tensor dlogits2d = backward_cross_entropy(s.logits2d, s.targets);
 
       // reshape to [B, T, V]
@@ -734,14 +701,13 @@ inline Grads backward(GPTLanguageModel &model, const SavedForward &s)
             for (int v = 0; v < V; ++v)
                   dlogits3d.data[i * V + v] = dlogits2d.at(i, v);
 
-      // ── lm_head backward  [B,T,V] → [B,T,C] ──────────────────
-      Tensor dx = backward_linear(dlogits3d, s.lm_in,
-                                  model.lm_head.weight, g.lm_head);
+      // lm_head backward  [B,T,V] [B,T,C] ─
+      Tensor dx = backward_linear(dlogits3d, s.lm_in, model.lm_head.weight, g.lm_head);
 
-      // ── final layernorm backward ──────────────────────────────
+      // final layernorm backward
       dx = backward_layernorm(dx, s.ln_f, model.ln_f.gamma, g.ln_f);
 
-      // ── transformer blocks (reverse order) ───────────────────
+      // transformer blocks (reverse order)
       for (int l = model.n_layer - 1; l >= 0; --l)
       {
             auto &blk = model.blocks[l];
@@ -755,24 +721,21 @@ inline Grads backward(GPTLanguageModel &model, const SavedForward &s)
             // residual adds straight through:
             // d(x_after_mha) gets dx directly (accumulated below)
 
-            // ---- LN2 + FFN backward ─────────────────────────────
-            // dffn_out → (dropout bwd) → fc2 bwd → relu bwd → fc1 bwd → dx_ln2
+            // ---- LN2 + FFN backward ─
+            // dffn_out (dropout bwd) fc2 bwd relu bwd fc1 bwd dx_ln2
             Tensor dffn = dffn_out;
             if (sb.ffn.used_dropout)
                   dffn = backward_dropout(dffn, sb.ffn.dropout_mask, DROPOUT);
 
             // fc2 backward
-            Tensor dh_relu = backward_linear(dffn, sb.ffn.h,
-                                             blk.ffwd.fc2.weight, gb.ffwd.dfc2);
+            Tensor dh_relu = backward_linear(dffn, sb.ffn.h, blk.ffwd.fc2.weight, gb.ffwd.dfc2);
             // relu backward
             Tensor dh_pre = backward_relu(dh_relu, sb.ffn.h_pre);
             // fc1 backward
-            Tensor dx_ln2 = backward_linear(dh_pre, sb.ffn.x,
-                                            blk.ffwd.fc1.weight, gb.ffwd.dfc1);
+            Tensor dx_ln2 = backward_linear(dh_pre, sb.ffn.x, blk.ffwd.fc1.weight, gb.ffwd.dfc1);
 
-            // LN2 backward → d(x_after_mha) from FFN branch
-            Tensor dx_after_mha_ffn = backward_layernorm(dx_ln2, sb.ln2,
-                                                         blk.ln2.gamma, gb.ln2);
+            // LN2 backward d(x_after_mha) from FFN branch
+            Tensor dx_after_mha_ffn = backward_layernorm(dx_ln2, sb.ln2, blk.ln2.gamma, gb.ln2);
             // total d(x_after_mha) = residual-pass + LN2 branch
             Tensor dx_after_mha = add(dx, dx_after_mha_ffn);
 
@@ -780,14 +743,13 @@ inline Grads backward(GPTLanguageModel &model, const SavedForward &s)
             Tensor dattn_out = dx_after_mha; // gradient to attn branch
             // d(x_in) from this residual = dx_after_mha (passed through)
 
-            // ---- MHA backward ────────────────────────────────────
+            // ---- MHA backward─
             Tensor dmha = dattn_out;
             if (sb.mha.used_dropout)
                   dmha = backward_dropout(dmha, sb.mha.dropout_mask, DROPOUT);
 
-            // proj backward  [B,T,n_embd] → [B,T,n_head*hs]
-            Tensor dconcat = backward_linear(dmha, sb.mha.concat,
-                                             blk.sa.proj.weight, gb.sa.proj);
+            // proj backward  [B,T,n_embd] [B,T,n_head*hs]
+            Tensor dconcat = backward_linear(dmha, sb.mha.concat, blk.sa.proj.weight, gb.sa.proj);
 
             // split concat grad back to each head
             std::vector<int> head_sizes(n_head, hs);
@@ -809,35 +771,40 @@ inline Grads backward(GPTLanguageModel &model, const SavedForward &s)
                   // Actually: out_h = wei_drop @ v
                   // d(wei_drop) = dout_h @ v^T   [B,T,T]
                   // d(v)        = wei_drop^T @ dout_h  [B,T,hs]
-                  Tensor wei_used = sh.used_dropout ? Tensor([&]()
-                                                             {
-                                  Tensor tmp = sh.wei;
-                                  float inv_keep = 1.0f/(1.0f-DROPOUT);
-                                  for(int i=0;i<tmp.numel();++i)
-                                      tmp.data[i] = sh.dropout_mask.data[i]*sh.wei.data[i]*inv_keep;
-                                  return tmp; }())
-                                                    : sh.wei;
+                  Tensor wei_used =
+                        sh.used_dropout ? Tensor(
+                                                [&]()
+                                                {
+                                                      Tensor tmp = sh.wei;
+                                                      float inv_keep = 1.0f / (1.0f - DROPOUT);
+                                                      for (int i = 0; i < tmp.numel(); ++i)
+                                                            tmp.data[i] = sh.dropout_mask.data[i] *
+                                                                          sh.wei.data[i] * inv_keep;
+                                                      return tmp;
+                                                }())
+                                        : sh.wei;
 
                   // d(out_h) = dhead_outs[h]
-                  // out_h = wei_used @ v   →  backward of bmm
-                  //   da = dOut @ b^T  →  d_wei_used = dout_h @ v^T  [B,T,T]
-                  //   db = a^T @ dOut  →  dv         = wei_used^T @ dout_h [B,T,hs]
+                  // out_h = wei_used @ v    backward of bmm
+                  //   da = dOut @ b^T   d_wei_used = dout_h @ v^T  [B,T,T]
+                  //   db = a^T @ dOut   dv         = wei_used^T @ dout_h [B,T,hs]
                   Tensor vT = transpose23(sh.v); // [B, hs, T]
                   // d_wei_drop [B,T,T] = dout_h @ vT  (but vT is [B,hs,T], need [B,T,hs]@... )
                   // Use bmm with v transposed
-                  //   dout_h [B,T,hs], v [B,T,hs]  →  vT [B,hs,T]
+                  //   dout_h [B,T,hs], v [B,T,hs]   vT [B,hs,T]
                   //   d_wei_drop = bmm(dout_h, vT)  = [B,T,hs]@[B,hs,T] = [B,T,T]
                   Tensor d_wei_drop = bmm(dout_h, vT); // [B,T,T]
 
                   // dv = wei_used^T @ dout_h  = [B,T,T]^T @ [B,T,hs] = [B,T,hs]
-                  Tensor wei_usedT = transpose23(wei_used); // [B, T, T] transposed → [B, T, T]
+                  Tensor wei_usedT = transpose23(wei_used); // [B, T, T] transposed [B, T, T]
                   // bmm needs [B,T,T] x [B,T,hs]:  wei_usedT [B,T,T] x dout_h [B,T,hs]
                   // but bmm signature is [B,T,D]x[B,D,T2]
                   // wei_usedT as [B,T,T] x dout_h [B,T,hs]: first transpose wei_used to get [B,T,T]
-                  // correct: dv = bmm(wei_used^T, dout_h) where wei_used^T = [B,T,T] transposed back
+                  // correct: dv = bmm(wei_used^T, dout_h) where wei_used^T = [B,T,T] transposed
+                  // back
                   Tensor dv = bmm(transpose23(sh.wei), dout_h); // [B,T,hs]
 
-                  // attention dropout backward on d_wei_drop → d_wei
+                  // attention dropout backward on d_wei_drop d_wei
                   Tensor d_wei = d_wei_drop;
                   if (sh.used_dropout)
                   {
@@ -865,13 +832,13 @@ inline Grads backward(GPTLanguageModel &model, const SavedForward &s)
                   // dq  = d_wei_pre @ k           [B,T,T]@[B,T,hs]... need k [B,hs,T]^T = k
                   // actual: d_wei_pre[b,i,j] = sum over... it's q[b,i,:] · k[b,j,:]
                   // dq[b,i,d] = sum_j d_wei_pre[b,i,j] * k[b,j,d]
-                  //   = bmm(d_wei_pre, k)  where k is [B,T,hs] → need [B,T,hs] directly
+                  //   = bmm(d_wei_pre, k)  where k is [B,T,hs] need [B,T,hs] directly
                   //   = bmm with b=[B,hs,T]? No: bmm([B,T,T], [B,T,hs]) needs second arg [B,T,T]
                   // Use: dq = d_wei_pre @ k  with k as [B, hs, T]... no.
-                  // dq[b,i,d] = sum_j d_pre[b,i,j] * k[b,j,d]  → this IS bmm(d_pre, k) if
+                  // dq[b,i,d] = sum_j d_pre[b,i,j] * k[b,j,d]  this IS bmm(d_pre, k) if
                   // k were [B,T,hs]... but bmm expects [B,D,T2].  So treat as matmul style:
                   // bmm(d_pre [B,T,T], k [B,T,hs]) — but bmm signature needs [B,D,T2]:
-                  // interpret as B batches, each [T,T] @ [T,hs] = [T,hs]:  b's D=T, T2=hs → valid!
+                  // interpret as B batches, each [T,T] @ [T,hs] = [T,hs]:  b's D=T, T2=hs valid!
                   Tensor dq = bmm(d_wei_pre, sh.k); // [B,T,hs]
 
                   // dk[b,j,d] = sum_i d_pre[b,i,j] * q[b,i,d]
@@ -897,9 +864,8 @@ inline Grads backward(GPTLanguageModel &model, const SavedForward &s)
                   }
             }
 
-            // LN1 backward → d(x_in)
-            Tensor dx_in_mha = backward_layernorm(dx_ln1, sb.ln1,
-                                                  blk.ln1.gamma, gb.ln1);
+            // LN1 backward d(x_in)
+            Tensor dx_in_mha = backward_layernorm(dx_ln1, sb.ln1, blk.ln1.gamma, gb.ln1);
 
             // total dx for this block: residual pass-through + LN1/MHA branch + LN2/FFN branch
             // d(x_in) = d(x_after_mha) [residual from MHA] + d(x_in) [from MHA path]
@@ -907,7 +873,7 @@ inline Grads backward(GPTLanguageModel &model, const SavedForward &s)
             dx = add(dx_after_mha, dx_in_mha);
       }
 
-      // ── Embedding backward ───────────────────────────────────
+      // ── Embedding backward
       // dx is now d(emb_sum) = d(tok_emb + pos_emb)
       // pos_emb grad: sum over batch
       for (int b = 0; b < B; ++b)
@@ -927,10 +893,6 @@ inline Grads backward(GPTLanguageModel &model, const SavedForward &s)
       return g;
 }
 
-// ============================================================
-// Apply Grads → model weights  (AdamW update)
-// ============================================================
-
 struct AdamWState
 {
       int step{0};
@@ -944,13 +906,14 @@ struct AdamWState
       std::vector<ParamState> states;
 
       AdamWState(float lr_ = 3e-4f, float b1 = 0.9f, float b2 = 0.999f, float e = 1e-8f)
-          : lr(lr_), beta1(b1), beta2(b2), eps(e) {}
+            : lr(lr_), beta1(b1), beta2(b2), eps(e)
+      {
+      }
 
       void register_param(std::vector<float> &p)
       {
-            states.push_back({&p,
-                              std::vector<float>(p.size(), 0.0f),
-                              std::vector<float>(p.size(), 0.0f)});
+            states.push_back(
+                  {&p, std::vector<float>(p.size(), 0.0f), std::vector<float>(p.size(), 0.0f)});
       }
 
       // Update one param tensor from its gradient tensor
@@ -969,9 +932,7 @@ struct AdamWState
       }
 };
 
-inline void apply_grads(GPTLanguageModel &model,
-                        const Grads &g,
-                        AdamWState &opt)
+inline void apply_grads(GPTLanguageModel &model, const Grads &g, AdamWState &opt)
 {
       opt.step++;
       int pi = 0;
