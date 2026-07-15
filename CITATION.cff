@@ -1,0 +1,56 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: llm.cpp
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Eamon
+    name-particle: 'Eamon Sippy '
+    email: eamon112009@gmail.com
+    family-names: EAMON
+identifiers:
+  - type: url
+    value: 'https://github.com/LMGNU/llm.cpp'
+    description: LLM training in C++ & Python.
+repository-code: 'https://github.com/LMGNU/llm.cpp'
+abstract: >-
+  LLM training in C++ & Python.
+
+  No third-party runtime dependency - it builds from
+  main.cpp, config/config.h, and include/*.h alone.
+
+
+  Character-level tokenizer built directly from the input
+  corpus
+
+  Train/validation split via DataLoader
+
+  Token + positional embeddings
+
+  Multi-head causal self-attention with explicit QKV
+  projections
+
+  Pre-layer-norm residual transformer blocks
+
+  Feed-forward MLP with ReLU
+
+  Cross-entropy loss
+
+  Fully analytical backward pass —-every gradient
+  (attention, layer norm, MLP, embeddings) is derived and
+  coded in include/backward.h, not autograd
+
+  AdamW optimizer (first/second moment estimates, weight
+  decay)
+
+  Checkpoint save/load
+
+  Autoregressive generation and terminal chat mode
+keywords:
+  - llm
+  - transformer
+license: GPL-3.0
