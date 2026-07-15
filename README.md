@@ -1,7 +1,8 @@
 # llm.cpp
 
 <h1 align="center">
-<img width="957" height="234" alt="image" src="https://github.com/user-attachments/assets/2aa847d2-9dea-4d6d-8b78-6e3ad4798b65" />
+<img width="2170" height="725" alt="ChatGPT Image Jul 15, 2026, 08_59_17 PM" src="https://github.com/user-attachments/assets/39978715-8144-4971-8dc1-f8569680d9a4" />
+
 
 </h1>
 
