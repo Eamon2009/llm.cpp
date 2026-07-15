@@ -21,15 +21,15 @@ The point of this repo is the C++ core. The PyTorch, FastAPI, and frontend layer
 The fastest way to see the whole pipeline - tokenize, train, checkpoint, generate - using the bundled character-level corpus:
 
 ```bash
-g++ -std=c++17 -O2 -I. -Iinclude -o quadtrix.exe main.cpp
+g++ -std=c++17 -O2 -I. -Iinclude -o llm.exe main.cpp
 ./quadtrix.exe data/input.txt
 ```
 
 This trains from scratch on `data/input.txt` and writes the best checkpoint to `best_model.bin`. Once you have a checkpoint, generate or chat with it:
 
 ```bash
-./quadtrix.exe data/input.txt --generate
-./quadtrix.exe data/input.txt --chat --chat-tokens 300
+./llm.exe data/input.txt --generate
+./llm.exe data/input.txt --chat --chat-tokens 300
 ```
 
 debugging tip: drop `-O2` for `-g` when compiling if you want to step through `include/backward.h` or `include/gpt.h` in a debugger — the manual backward pass is much easier to follow one breakpoint at a time.
@@ -37,7 +37,7 @@ debugging tip: drop `-O2` for `-g` when compiling if you want to step through `i
 ### runtime arguments
 
 ```bash
-quadtrix.exe [data_path] [--generate] [--chat] [--chat-tokens N]
+llm.exe [data_path] [--generate] [--chat] [--chat-tokens N]
 ```
 
 | Argument | Description |
@@ -84,7 +84,7 @@ static const int MAX_ITERS    = 3000;
 For an optimized native build:
 
 ```bash
-g++ -std=c++17 -O3 -march=native -I. -Iinclude -o quadtrix.exe main.cpp
+g++ -std=c++17 -O3 -march=native -I. -Iinclude -o llm.exe main.cpp
 ```
 
 ## the PyTorch reference path
