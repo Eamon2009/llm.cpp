@@ -22,7 +22,7 @@ The fastest way to see the whole pipeline - tokenize, train, checkpoint, generat
 
 ```bash
 g++ -std=c++17 -O2 -I. -Iinclude -o llm.exe main.cpp
-./quadtrix.exe data/input.txt
+./llm.exe data/input.txt
 ```
 
 This trains from scratch on `data/input.txt` and writes the best checkpoint to `best_model.bin`. Once you have a checkpoint, generate or chat with it:
