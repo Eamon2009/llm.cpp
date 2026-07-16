@@ -1,4 +1,4 @@
 [submodule "libs/lmgnu"]
-    path = libs/lmgnu
-    url = https://github.com/LMGNU/LMGNU.git
-    branch = master
+	path = libs/lmgnu
+	url = https://github.com/LMGNU/LMGNU.git
+	branch = master
