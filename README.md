@@ -8,7 +8,7 @@
 
 [![Build & Test](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml)  [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) [![Release](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml) [![Linting](https://github.com/LMGNU/llm.cpp/actions/workflows/test.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/test.yml) [![CI Approval](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml)
 
-Language models in dependency-free C++, with no need for PyTorch or Python to make a transformer actually works. The native path is a decoder-only GPT: tensors, embeddings, multi-head causal self-attention, layer norm, cross-entropy, and a analytical backward pass with AdamW, all in [main.cpp](main.cpp) and [include/](include/). No autograd, no framework - every gradient is derived and written out.
+Language models in dependency-free C++, with no need for PyTorch or Python to make a transformer train locally. The native path is a decoder-only GPT: tensors, embeddings, multi-head causal self-attention, layer norm, cross-entropy, and a analytical backward pass with AdamW, all in [main.cpp](main.cpp) and [include/](include/). No autograd, no framework - every gradient is derived and written out.
 
 Alongside it sits a parallel PyTorch implementation in [engine/main.py](engine/main.py) and [engine/inference.py](engine/inference.py), so you can train and generate the same architecture with `torch` + `tiktoken` when you want speed instead of transparency. There's also an experimental integrated-GPU path in [iGPU/](engine/iGPU/).
 
@@ -61,7 +61,7 @@ llm.exe [data_path] [--generate] [--chat] [--chat-tokens N]
 
 ## what's actually implemented in C++
 
-No third-party runtime dependency — it builds from `main.cpp`, `config/config.h`, and `include/*.h` alone.
+No third-party runtime dependency - it builds from `main.cpp`, `config/config.h`, and `include/*.h` alone.
 
 - Character-level tokenizer built directly from the input corpus
 - Train/validation split via `DataLoader`
@@ -70,7 +70,7 @@ No third-party runtime dependency — it builds from `main.cpp`, `config/config.
 - Pre-layer-norm residual transformer blocks
 - Feed-forward MLP with ReLU
 - Cross-entropy loss
-- **Fully analytical backward pass** — every gradient (attention, layer norm, MLP, embeddings) is derived and coded in `include/backward.h`, not autograd
+- **Fully analytical backward pass** - every gradient (attention, layer norm, MLP, embeddings) is derived and coded in `include/backward.h`, not autograd
 - AdamW optimizer (first/second moment estimates, weight decay)
 - Checkpoint save/load
 - Autoregressive generation and terminal chat mode
@@ -148,9 +148,9 @@ See [run.md](run.md) and the leaderboard in the full docs for more configuration
 |---|---|---|---|
 | nanoGPT / minGPT | Minimal, educational GPT training | Python | PyTorch |
 | llama2.c | Inference-only | C | None |
-| **llm.cpp** | Training *and* inference, manual backward pass, web UI | C++ / Python / TypeScript | Manual (C++) + PyTorch |
+| **llm.cpp** | Training *and* inference, manual backward pass, web UI | C++ / Python | Manual (C++) + PyTorch |
 
-I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-free and to stay the part of this repo that explin transformer internals directly. The PyTorch engine, FastAPI middleware, and React frontend are welcome to grow more features, integrations, and UI polish. If you build a port to another language or framework, I'm happy to link to it from a notable-forks section; just open an issue or PR.
+I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-free and to stay the part of this repo that explin transformer internals directly. The PyTorch engine, include, and ci are welcome to grow more features, integrations, and CI polish. If you build a port to another language or framework, I'm happy to link to it from a notable-forks section; just open an issue or PR.
 
 ## references
 
