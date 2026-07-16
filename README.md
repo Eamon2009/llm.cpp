@@ -14,6 +14,12 @@ Alongside it sits a parallel PyTorch implementation in [engine/main.py](engine/m
 
 The point of this repo is the C++ core. The PyTorch, FastAPI, and frontend layers exist to make the model usable, but if you're here to learn how a GPT is actually built and trained without a framework doing the work for you, [include/backward.h](include/backward.h) is where to start reading.
 
+<h1 align="center">
+<img width="824" height="250" alt="image" src="https://github.com/user-attachments/assets/5c65daa2-903a-4392-85e3-56442bb82cac" />
+
+
+</h1>
+
 ***technical notes***: [docs](https://eamon2009.github.io/LLMs/)
 
 
