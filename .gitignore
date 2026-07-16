@@ -57,3 +57,6 @@ Thumbs.db
 *.swo
 .idea
 docker-compose.override.yml
+libs/lmgnu/build/
+libs/lmgnu/dist/
+libs/lmgnu/*.egg-info/
