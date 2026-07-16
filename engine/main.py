@@ -66,23 +66,23 @@ seed = 1337
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 dropout = 0.1
-block_size = 256     
-n_embd = 192         
-n_head = 6           
-n_layer = 6          
-batch_size = 64      
-max_iters = 5000     
-eval_interval = 250  
-learning_rate = 6e-4 
-eval_iters = 200     
-dropout = 0.1        
+block_size = 256
+n_embd = 192
+n_head = 6
+n_layer = 6
+batch_size = 64
+max_iters = 5000
+eval_interval = 250
+learning_rate = 6e-4
+eval_iters = 200
+dropout = 0.1
 
 torch.manual_seed(seed)
 
 
 # tokenizer
 
-def get_tokenizer(encoding_name="o200k"):
+def get_tokenizer(encoding_name="o200k_base"):
     tokenizer = tiktoken.get_encoding(encoding_name)
     vocab_size = tokenizer.n_vocab
     return tokenizer, vocab_size
@@ -96,7 +96,7 @@ def decode(tokens, tokenizer): return tokenizer.decode(tokens)
 with open(cleaned_path, 'r', encoding='utf-8') as f:
     text = f.read()
 
-tokenizer, vocab_size = get_tokenizer("o200k")
+tokenizer, vocab_size = get_tokenizer("o200k_base")
 encoded_data = encode(text, tokenizer)
 
 data = torch.tensor(encoded_data, dtype=torch.long)
