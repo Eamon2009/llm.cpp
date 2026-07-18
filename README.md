@@ -6,13 +6,23 @@
 
 </h1>
 
-[![Build & Test](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml)  [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) [![Release](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml) [![Linting](https://github.com/LMGNU/llm.cpp/actions/workflows/test.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/test.yml) [![CI Approval](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml)
+[![Build & Test](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml)  [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) [![Release](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml) 
 
-Language models in dependency-free C++, with no need for PyTorch or Python to make a transformer train locally. The native path is a decoder-only GPT: tensors, embeddings, multi-head causal self-attention, layer norm, cross-entropy, and a analytical backward pass with AdamW, all in [main.cpp](main.cpp) and [include/](include/). No autograd, no framework - every gradient is derived and written out.
+Language models in dependency-free C++, with no need for PyTorch or Python to make a transformer train locally. The native path is a decoder-only GPT: tensors, embeddings, multi-head causal self-attention, layer norm, cross-entropy, and a analytical backward pass with AdamW, all in [main.cpp](main.cpp) and [include/](include/). No autograd, no framework - every gradient is derived and written out.The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU training on 31.4M characters, demonstrating that character-level language modelling at this scale is tractable on commodity hardware without framework dependencies. On GPU (CUDA/bf16), a validation loss of 2.3918 is reached in under 83 minutes with peak throughput of 19.6k tok/s.More broadly, the contribution of this work lies in transparency. Every gradient in the backward pass is explicitly written and readable. Every tensor operation is a standard C++ function. what frameworks like PyTorch are actually computing and that understanding is, we believe, the foundation of genuineexpertise in deep learning.
 
 Alongside it sits a parallel PyTorch implementation in [engine/main.py](engine/main.py) and [engine/inference.py](engine/inference.py), so you can train and generate the same architecture with `torch` + `tiktoken` when you want speed instead of transparency. There's also an experimental integrated-GPU path in [iGPU/](engine/iGPU/).
 
 The point of this repo is the C++ core. The PyTorch, FastAPI, and frontend layers exist to make the model usable, but if you're here to learn how a GPT is actually built and trained without a framework doing the work for you, [include/backward.h](include/backward.h) is where to start reading.
+
+## From CPU to GPU: The LibTorch Port
+The custom C++ backend is transparent but slow: a CPU executes scalar matrix multiplication at roughly 1–10 GFLOP/s. An NVIDIA RTX 4090 delivers ∼80 TFLOP/s—an 8,000–80,000× speedup for the same computation.The LibTorch port replaces the custom backend with PyTorch’s C++ API, gaining cuBLAS-accelerated matrix operations. The transformer architecture remains unchanged only the compute layer is modified. A single line migrates
+the model to GPU:
+```cpp
+model->to(torch::kCUDA)
+```
+which transfers all parameters to GPU memory; all subsequent torch::matmul calls dispatch to cuBLAS automatically.
+
+---
 
 <h1 align="center">
 <img width="824" height="250" alt="image" src="https://github.com/user-attachments/assets/5c65daa2-903a-4392-85e3-56442bb82cac" />
@@ -21,6 +31,193 @@ The point of this repo is the C++ core. The PyTorch, FastAPI, and frontend layer
 </h1>
 
 ***technical notes***: [docs](https://eamon2009.github.io/LLMs/)
+
+## File structure
+
+```
+C:.
+│   .clang-format        # Code formatting rules for C++
+│   .dockerignore        # Files to exclude from Docker builds
+│   .gitattributes       # Git configuration for file attributes
+│   .gitignore           # Files to ignore in Git version control
+│   .gitmodules          # Track external Git submodules
+│   benchmark.cpp        # C++ benchmarking source file
+│   CITATION.cff         # Citation information for the repository
+│   CODE_OF_CONDUCT.md   # Community behavior guidelines
+│   CONTRIBUTING.md      # Guidelines for open-source contributors
+│   LICENSE              # Project open-source license terms
+│   llm.mm               # Metal/Objective-C++ file related to the LLM
+│   main.cpp             # Main C++ application entry point
+│   mypy.ini             # Configuration for Python static type checker
+│   README.md            # Main project documentation and overview
+│   requirements.txt     # Python dependencies list
+│   run.md               # Instructions on how to run the project
+│   SECURITY.md          # Security policy and reporting vulnerability steps
+│
+├───.devops              # Configuration for development operations and containers
+│       docker-compose.dev.yml  # Docker compose setup for local development
+│       docker-compose.gpu.yml  # Docker compose setup with GPU support
+│       docker-compose.yml      # Base Docker compose orchestration file
+│       Dockerfile              # Main Docker build instructions
+│       Dockerfile.backend      # Docker setup for the backend service
+│       Dockerfile.cpp          # Docker setup optimized for the C++ application
+│       Dockerfile.frontend     # Docker setup for the frontend UI
+│       nginx.conf              # Reverse proxy server configuration
+│
+├───.github              # GitHub-specific automation configurations
+│   │   dependabot.yml            # Automated dependency update configuration
+│   │   pull_request_template.md  # Template filled out when making PRs
+│   │
+│   ├───ISSUE_TEMPLATE   # Templates for reporting bugs or features
+│   │       bug_report.md
+│   │       config.yml
+│   │       feature_request.md
+│   │
+│   └───workflows        # GitHub Actions files for CI/CD automation
+│           check.yml
+│           ci-approval.yml
+│           ci.yml
+│           docker-publish.yml
+│           jekyll-gh-pages.yml
+│           lmgnu.yml
+│           pr-check.yml
+│           release.yml
+│           test.yml
+│
+├───assets               # Visual media and static resources
+│       run_2026-07-16 165731.png # Benchmarking/execution screenshots
+│       run_20260430_192930.png
+│       run_20260508_110726.png
+│       run_20260530_165216 (1).png
+│
+├───benches              # Performance testing frameworks
+│   │   bech(mm).mm               # Metal-accelerated benchmark script
+│   │   bench.cpp                 # C++ performance testing suite
+│   │   benchmark_config.json     # Settings configurations for tests
+│   │   benchmark_training.py     # Python script to profile training speed
+│   │   python_benchmark.py       # Python script to profile general execution
+│   │
+│   └───results          # Output directory for test metrics
+│           python_benchmark.csv  # Saved performance test data
+│
+├───config               # Project settings files
+│       config.h                  # C++ global header configuration variables
+│
+├───data                 # Dataset handling resources
+│       data_set.py               # Python utility for preparing data loaders
+│       input.txt                 # Sample raw text dataset
+│
+├───docs                 # Project technical documentation
+│       training_report.png       # Visual graph of model training progress
+│
+├───engine               # Core logic for running models and inference
+│   │   fineweb_dataset.py        # Python script to parse the FineWeb dataset
+│   │   inference.py              # Python logic to generate text from a model
+│   │   input.txt                 # Training/testing text asset
+│   │   main.py                   # Central Python execution file
+│   │   mini-quadtrix.pt          # PyTorch checkpoint file holding model weights
+│   │   test.py
+│   │   test2.py
+│   │
+│   ├───iGPU             # Integrated GPU specific implementations
+│   │       inference.py
+│   │       main.py
+│   │
+│   └───logs             # Text records tracking previous execution runs
+│           run_20260710_205931.txt
+│
+├───frontend             # User interface resources
+│       package-lock.json         # Locked versions of Node dependency trees
+│       package.json              # Node.js frontend dependencies manifest
+│
+├───include              # Custom C++ header files for LLM building blocks
+│       attention.h               # Attention layer logic
+│       backward.h                # Backpropagation/gradient calculations
+│       block.h                   # Transformer block assembly
+│       dataloader.h              # C++ data ingestion pipeline
+│       embedding.h               # Token-to-vector mappings
+│       feedforward.h             # Feed-forward neural network layer
+│       gpt.h                     # Overall GPT architecture blueprint
+│       layernorm.h               # Layer normalization utilities
+│       linear.h                  # Fully connected dense layers
+│       tensor.h                  # Multidimensional array data structure
+│       torch_bridge.h            # Interoperability layer with PyTorch
+│
+├───libs                 # Custom library modules
+│   └───lmgnu             # Core backend sub-package
+│       │   .gitignore
+│       │   LICENSE
+│       │   pyproject.toml        # Build system configuration for Python
+│       │   README.md
+│       │
+│       ├───.github
+│       │   └───workflows
+│       │           ci-approval.yml
+│       │           jekyll-gh-pages.yml
+│       │           pypi.yml
+│       │           static.yml
+│       │
+│       ├───lmgnu         # Custom Python packages for neural network operations
+│       │   │   core.py           # Core utility math functions
+│       │   │   logarithm.py      # Custom logarithmic calculations
+│       │   │   nn.py             # Basic neural network components
+│       │   │   __init__.py       # Makes folder a Python package
+│       │   │
+│       │   └───__pycache__   # Cached compiled Python bytecode
+│       │           __init__.cpython-310.pyc
+│       │
+│       └───lmgnu.egg-info # Python package installation metadata
+│               dependency_links.txt
+│               PKG-INFO
+│               SOURCES.txt
+│               top_level.txt
+│
+├───llm.cpp              # C++ implementation layer for LLM mechanics
+│   └───include          # Architectural components for the custom C++ engine
+│           backward.h
+│           block.h
+│           char_level.h          # Character-level tokenizer processing
+│           dataloader.h
+│           embedding.h
+│           feedforward.h
+│           gpt.h
+│           layernorm.h
+│           linear.h
+│           quadtrix.h            # Specialized model layer variant
+│
+├───LMGNU                # Project directory containing main runtime sources
+│   │   llm.cpp                  # Primary C++ implementation file
+│   │   llm.py                   # Python equivalent / bindings wrapper
+│   │
+│   ├───config
+│   │       config.h
+│   │
+│   └───include          # Header files for LMGNU implementation
+│           attention.h
+│           backward.h
+│           block.h
+│           char_level.h
+│           dataloader.h
+│           embedding.h
+│           feedforward.h
+│           gpt.h
+│           layernorm.h
+│           linear.h
+│           llm.h
+│           lm.h
+│           sampler.h             # Sampling strategies (Top-K, Top-P, etc.)
+│           tensor.h
+│           torch_bridge.h
+│
+├───scripts              # Automation command tools
+│       build.sh                  # Shell script to compile the project
+│
+└───train_test           # Sandboxed training scripts
+        model.py                  # Prototype layout for the AI model
+        test.c                    # Standard C validation routine
+        train2.mm                 # Metal-accelerated AI model training script
+
+```
 
 
 ## quick start (C++, train + chat)
