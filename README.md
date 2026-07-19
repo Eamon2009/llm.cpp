@@ -81,26 +81,6 @@ C:.
 │       Dockerfile.frontend     # Docker setup for the frontend UI
 │       nginx.conf              # Reverse proxy server configuration
 │
-├───.github              # GitHub-specific automation configurations
-│   │   dependabot.yml            # Automated dependency update configuration
-│   │   pull_request_template.md  # Template filled out when making PRs
-│   │
-│   ├───ISSUE_TEMPLATE   # Templates for reporting bugs or features
-│   │       bug_report.md
-│   │       config.yml
-│   │       feature_request.md
-│   │
-│   └───workflows        # GitHub Actions files for CI/CD automation
-│           check.yml
-│           ci-approval.yml
-│           ci.yml
-│           docker-publish.yml
-│           jekyll-gh-pages.yml
-│           lmgnu.yml
-│           pr-check.yml
-│           release.yml
-│           test.yml
-│
 ├───assets               # Visual media and static resources
 │       run_2026-07-16 165731.png # Benchmarking/execution screenshots
 │       run_20260430_192930.png
@@ -132,20 +112,11 @@ C:.
 │   │   inference.py              # Python logic to generate text from a model
 │   │   input.txt                 # Training/testing text asset
 │   │   main.py                   # Central Python execution file
-│   │   mini-quadtrix.pt          # PyTorch checkpoint file holding model weights
-│   │   test.py
-│   │   test2.py
 │   │
 │   ├───iGPU             # Integrated GPU specific implementations
-│   │       inference.py
-│   │       main.py
-│   │
-│   └───logs             # Text records tracking previous execution runs
-│           run_20260710_205931.txt
-│
-├───frontend             # User interface resources
-│       package-lock.json         # Locked versions of Node dependency trees
-│       package.json              # Node.js frontend dependencies manifest
+│           inference.py
+│           main.py
+│   
 │
 ├───include              # Custom C++ header files for LLM building blocks
 │       attention.h               # Attention layer logic
@@ -159,48 +130,6 @@ C:.
 │       linear.h                  # Fully connected dense layers
 │       tensor.h                  # Multidimensional array data structure
 │       torch_bridge.h            # Interoperability layer with PyTorch
-│
-├───libs                 # Custom library modules
-│   └───lmgnu             # Core backend sub-package
-│       │   .gitignore
-│       │   LICENSE
-│       │   pyproject.toml        # Build system configuration for Python
-│       │   README.md
-│       │
-│       ├───.github
-│       │   └───workflows
-│       │           ci-approval.yml
-│       │           jekyll-gh-pages.yml
-│       │           pypi.yml
-│       │           static.yml
-│       │
-│       ├───lmgnu         # Custom Python packages for neural network operations
-│       │   │   core.py           # Core utility math functions
-│       │   │   logarithm.py      # Custom logarithmic calculations
-│       │   │   nn.py             # Basic neural network components
-│       │   │   __init__.py       # Makes folder a Python package
-│       │   │
-│       │   └───__pycache__   # Cached compiled Python bytecode
-│       │           __init__.cpython-310.pyc
-│       │
-│       └───lmgnu.egg-info # Python package installation metadata
-│               dependency_links.txt
-│               PKG-INFO
-│               SOURCES.txt
-│               top_level.txt
-│
-├───llm.cpp              # C++ implementation layer for LLM mechanics
-│   └───include          # Architectural components for the custom C++ engine
-│           backward.h
-│           block.h
-│           char_level.h          # Character-level tokenizer processing
-│           dataloader.h
-│           embedding.h
-│           feedforward.h
-│           gpt.h
-│           layernorm.h
-│           linear.h
-│           quadtrix.h            # Specialized model layer variant
 │
 ├───LMGNU                # Project directory containing main runtime sources
 │   │   llm.cpp                  # Primary C++ implementation file
@@ -220,7 +149,6 @@ C:.
 │           gpt.h
 │           layernorm.h
 │           linear.h
-│           llm.h
 │           lm.h
 │           sampler.h             # Sampling strategies (Top-K, Top-P, etc.)
 │           tensor.h
