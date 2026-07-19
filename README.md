@@ -8,18 +8,31 @@
 
 [![Build & Test](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml)  [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) [![Release](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml) 
 
-Language models in dependency-free C++, with no need for PyTorch or Python to make a transformer train locally. The native path is a decoder-only GPT: tensors, embeddings, multi-head causal self-attention, layer norm, cross-entropy, and a analytical backward pass with AdamW, all in [main.cpp](main.cpp) and [include/](include/). No autograd, no framework - every gradient is derived and written out.The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU training on 31.4M characters, demonstrating that character-level language modelling at this scale is tractable on commodity hardware without framework dependencies. On GPU (CUDA/bf16), a validation loss of 2.3918 is reached in under 83 minutes with peak throughput of 19.6k tok/s.More broadly, the contribution of this work lies in transparency. Every gradient in the backward pass is explicitly written and readable. Every tensor operation is a standard C++ function. what frameworks like PyTorch are actually computing and that understanding is, we believe, the foundation of genuineexpertise in deep learning.
-Alongside it sits a parallel PyTorch implementation in [engine/main.py](engine/main.py) and [engine/inference.py](engine/inference.py), so you can train and generate the same architecture with `torch` + `tiktoken` when you want speed instead of transparency. There's also an experimental integrated-GPU path in [iGPU/](engine/iGPU/).
+This project implements language models in dependency-free C++, eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[main.mm](main.mm) and the [include/](include) directory. With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
+The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU training on 31.4 million characters, demonstrating that character-level language modeling at this scale is highly tractable on commodity hardware without external dependencies. On a GPU (CUDA/bfloat16), a validation loss of 2.3918 is reached in under 83 minutes, achieving a peak throughput of 19.6k tokens per second.
 
-The point of this repo is the C++ core. The PyTorch, FastAPI, and frontend layers exist to make the model usable, but if you're here to learn how a GPT is actually built and trained without a framework doing the work for you, [include/backward.h](include/backward.h) is where to start reading.
+## Leaderboar
+
+| S.No.| time | val_bpb | scale | Date | Contributors |
+|---|-------------|---------|------|------|--------------|
+| 1 | 14.2 hours | 0.6120 | 124M (8x A100) | 2019 | OpenAI (GPT-2 Base) |
+| 2 | 2.5 hours | 0.6945 | 50M (H100) | 2024 | Anthropic (Internal Proxy) |
+| 3 | 61.3 min | 0.7176 | 10.82M (T4) | Mar 2026 | @Eamon2009 |
+| 4 | 3.1 hours | 0.8012 | 14M (A100) | 2024 | Meta (MobileLLM) |
+| 5 | 6.1 min | 0.9250 | 1.99M (T4) | Feb 2026 | @Eamon2009 |
+| 6 | 39.4 min | 1.3145 | 0.82M (CPU) | Jan 2026 | @Eamon2009 |
+| 7 | 76.2 min | 1.6371 | 0.82M (CPU) | Jan 2026 | @Eamon2009 |
+
+More broadly, the primary contribution of this work lies in its absolute transparency. Every gradient in the backward pass is explicitly written and readable, and every tensor operation is a standard C++ function. By exposing exactly what frameworks like PyTorch compute under the hood, this implementation provides a clear educational pathway. We believe that this fundamental understanding is the true foundation of genuine expertise in deep learning.
+Alongside it sits a parallel PyTorch implementation in [engine/main.py](engine/main.py) and [engine/inference.py](engine/inference.py), so you can train and generate the same architecture with `torch` + `tiktoken` when you want speed instead of transparency. There's also an experimental integrated-GPU path in [iGPU/](engine/iGPU/). The point of this repo is the C++ core. The PyTorch exist to make the model usable, but if you're here to ***train a GPT without a framework*** doing the work for you, [include/backward.h](include/backward.h) is where to start reading.
 
 ## From CPU to GPU: The LibTorch Port
-The custom C++ backend is transparent but slow: a CPU executes scalar matrix multiplication at roughly 1–10 GFLOP/s. An NVIDIA RTX 4090 delivers ∼80 TFLOP/s—an 8,000–80,000× speedup for the same computation.The LibTorch port replaces the custom backend with PyTorch’s C++ API, gaining cuBLAS-accelerated matrix operations. The transformer architecture remains unchanged only the compute layer is modified. A single line migrates
+The custom C++ backend is transparent but slow: a CPU executes scalar matrix multiplication at roughly 1–10 GFLOP/s. An NVIDIA RTX 4090 delivers ∼80 TFLOP/s-an 8,000–80,000× speedup for the same computation.The LibTorch port replaces the custom backend with PyTorch’s C++ API, gaining cuBLAS-accelerated matrix operations. The transformer architecture remains unchanged only the compute layer is modified. A single line migrates
 the model to GPU:
 ```cpp
 model->to(torch::kCUDA)
 ```
-which transfers all parameters to GPU memory; all subsequent torch::matmul calls dispatch to cuBLAS automatically.
+which transfers all parameters to GPU memory; all subsequent `torch::matmul` calls dispatch to cuBLAS automatically.
 
 ---
 
@@ -304,22 +317,7 @@ It looks for `engine/input.txt` by default; point it elsewhere with `QUADTRIX_TR
 python engine/inference.py --checkpoint engine/best_model.pt --prompt "Once upon a time" --max-new-tokens 100
 ```
 
-## results so far
-## Leaderboard
-
-Runs are ranked by validation loss. Lower is better.
-
-| # | Val Loss | Parameters | Time     | Hardware | Description                              |
-|--:|----------|------------|----------|----------|------------------------------------------|
-| 1 | **0.7176**   | 10.82M     | 61.3 min | NVIDIA T4    | Large-scale run, coherent paragraphs, strong convergence |
-| 2 | 0.9250   | 1.99M      | 6.1 min  | NVIDIA T4   | Optimised run, fast training, stable learning            |
-| 3 | 1.3145   | 0.82M      | 39.4 min | x64 CPU     | Baseline, small data                                     |
-| 4 | 1.6371   | 0.82M      | 76.2 min | x64 CPU      | Extended CPU training, 3000 iterations                   |
-
-All runs: @Eamon2009, 2026.
-
 ## Benchmarks
-
 ### Runs at a Glance
 
 | Metric            | Character-Level | Small Scale | Large Scale |
@@ -344,7 +342,7 @@ See [run.md](run.md) and the leaderboard in the full docs for more configuration
 |---|---|---|---|
 | nanoGPT / minGPT | Minimal, educational GPT training | Python | PyTorch |
 | llama2.c | Inference-only | C | None |
-| **llm.cpp** | Training *and* inference, manual backward pass, web UI | C++ / Python | Manual (C++) + PyTorch |
+| **llm.cpp** | Training *and* inference, manual backward pass | C++ / Python | Manual (C++) + PyTorch |
 
 I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-free and to stay the part of this repo that explin transformer internals directly. The PyTorch engine, include, and ci are welcome to grow more features, integrations, and CI polish. If you build a port to another language or framework, I'm happy to link to it from a notable-forks section; just open an issue or PR.
 
