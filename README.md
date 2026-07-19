@@ -9,7 +9,7 @@
 [![Release](https://img.shields.io/github/v/release/LMGNU/llm.cpp)](https://github.com/LMGNU/llm.cpp/releases) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0) [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) 
 
 
-This project implements language models in dependency-free C++, eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[llm.mm](llm.mm) and the [include/](include) directory also a ***token level [BPE]*** implementation inside [LMGNU](LMGNU) . With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
+This project implements language models in dependency-free C++, eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[llm.mm](llm.mm) and the [include/](include) directory also a ***token level [BPE]*** [dataloder.h](LMGNU/include) implementation inside [LMGNU](LMGNU) . With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
 The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU training on 31.4 million characters, demonstrating that character-level language modeling at this scale is highly tractable on commodity hardware without external dependencies. On a GPU (CUDA/bfloat16), a validation loss of 2.3918 is reached in under 83 minutes, achieving a peak throughput of 19.6k tokens per second.
 
 ## Leaderboar
@@ -329,9 +329,26 @@ I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-fre
 
 ## references
 
-- Vaswani et al., "Attention Is All You Need", 2017
-- Radford et al., GPT-2 technical work, 2019
-- nanoGPT and minGPT as educational reference points
+- Vaswani et al., ["Attention Is All You Need"](https://arxiv.org/pdf/1706.03762), 2017
+- Radford et al., [GPT-2 technical work](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf), 2019
+-  [nanoGPT](https://github.com/karpathy/nanoGPT) as educational reference points
+-  [HuggingFace](https://huggingface.co/) for fineweb and other datasets.
+
+## Cite
+
+If you find llm.cpp helpful in your research cite as:
+```bibtex
+@misc{llm.cpp,
+  author = {Eamon Sippy},
+  title = {llm.cpp: LLM training in C++ \& Python},
+  year = {2026},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  url = {https://github.com/LMGNU/llm.cpp}
+}
+
+```
+
 
 ## license
 
