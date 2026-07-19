@@ -8,7 +8,7 @@
 
 [![Build & Test](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci.yml)  [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) [![Release](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/release.yml) 
 
-This project implements language models in dependency-free C++, eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[main.mm](main.mm) and the [include/](include) directory. With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
+This project implements language models in dependency-free C++, eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[main.mm](main.mm) and the [include/](include) directory also a ***token level [BPE]*** implementation inside [LMGNU](LMGNU) . With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
 The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU training on 31.4 million characters, demonstrating that character-level language modeling at this scale is highly tractable on commodity hardware without external dependencies. On a GPU (CUDA/bfloat16), a validation loss of 2.3918 is reached in under 83 minutes, achieving a peak throughput of 19.6k tokens per second.
 
 ## Leaderboar
@@ -236,9 +236,20 @@ C:.
 
 The fastest way to see the whole pipeline - tokenize, train, checkpoint, generate - using the bundled character-level corpus:
 
+get the data set first :
+
+``` shell
+cd data             # you set the file size for data set
+python data_set.py  # also get any dataset from hugging face datasets 
+```
+
 ```bash
 g++ -std=c++17 -O2 -I. -Iinclude -o llm.exe main.cpp
 ./llm.exe data/input.txt
+# also
+cd LMGNU
+g++ -std=c++17 -O2 -I. -Iinclude -o llm.exe llm.cpp
+./llm.exe ../data/input.txt
 ```
 
 This trains from scratch on `data/input.txt` and writes the best checkpoint to `best_model.bin`. Once you have a checkpoint, generate or chat with it:
@@ -268,7 +279,42 @@ llm.exe [data_path] [--generate] [--chat] [--chat-tokens N]
 | `GPT_DATA_PATH` | `data/input.txt` | Override the default training corpus |
 | `GPT_MODEL_PATH` | `best_model.bin` | Override the checkpoint path |
 
-## what's actually implemented in C++
+## What's Actually Implemented in C++
+
+No third-party runtime dependency - it builds from `main.cpp`, `config/config.h`, and `include/*.h` alone.
+
+- **Byte Pair Encoding (BPE) Tokenizer** - Built entirely from scratch. Compiles a custom vocabulary directly from the training corpus by running iterative token-pair merges until it hits a targeted vocabulary threshold.
+- Train/validation split via `DataLoader`
+- Token + positional embeddings
+- Multi-head causal self-attention with explicit QKV projections
+- Pre-layer-norm residual transformer blocks
+- Feed-forward MLP with ReLU
+- Cross-entropy loss
+- **Fully analytical backward pass** - every gradient (attention, layer norm, MLP, embeddings) is derived mathematically and coded explicitly in `include/backward.h`, not autograd
+- AdamW optimizer (first/second moment estimates, weight decay)
+- Checkpoint save/load
+- Autoregressive generation and terminal chat mode
+
+Hyperparameters live in `LMGNU/config/config.h` and require a rebuild to take effect:
+
+```cpp
+// note: The c++ version only runs on cpu not on GPU
+static const unsigned int SEED = 1337;
+static const double TRAIN_SPLIT = 0.9;
+static const int BATCH_SIZE = 32; 
+static const int BLOCK_SIZE = 64; 
+static const int MAX_ITERS = 5000;
+static const int EVAL_INTERVAL = 500;
+static const float LEARNING_RATE = 5e-4f;
+static const int EVAL_ITERS = 25; 
+static const int N_EMBD = 128;   
+static const int N_HEAD = 2;      
+static const int N_LAYER = 4;
+static const float DROPOUT = 0.05f;
+static const int BPE_VOCAB_SIZE = 2048; 
+```
+
+## Character-level implemented in C++
 
 No third-party runtime dependency - it builds from `main.cpp`, `config/config.h`, and `include/*.h` alone.
 
@@ -308,7 +354,9 @@ g++ -std=c++17 -O3 -march=native -I. -Iinclude -o llm.exe main.cpp
 [engine/main.py](engine/main.py) trains the same architectural idea with `torch`, `torch.nn`, and GPT-2 BPE tokenization via `tiktoken`, useful when you want to scale past what C++ loops can comfortably train on CPU.
 
 ```bash
-python engine/main.py
+cd engine
+python fineweb_dataset.py # you can also use data/input.txt also 
+python main.py
 ```
 
 It looks for `engine/input.txt` by default; point it elsewhere with `QUADTRIX_TRAIN_DATA` if needed. Run inference against a saved checkpoint:
