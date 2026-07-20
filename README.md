@@ -1,7 +1,7 @@
 # llm.cpp
 
 <h1 align="center">
-<img width="2170" height="725" alt="ChatGPT Image Jul 15, 2026, 08_59_17 PM" src="https://github.com/user-attachments/assets/39978715-8144-4971-8dc1-f8569680d9a4" />
+<img width"2170" height="725" alt="image" src="https://github.com/user-attachments/assets/1049c431-2ec8-4f24-b685-68f2d69adf33" />
 
 
 </h1>
@@ -39,7 +39,7 @@ which transfers all parameters to GPU memory; all subsequent `torch::matmul` cal
 ---
 
 <h1 align="center">
-<img width="824" height="250" alt="image" src="https://github.com/user-attachments/assets/5c65daa2-903a-4392-85e3-56442bb82cac" />
+<img width="824" height="249" alt="image" src="https://github.com/user-attachments/assets/5c65daa2-903a-4392-85e3-56442bb82cac" />
 
 
 </h1>
