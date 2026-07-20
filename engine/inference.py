@@ -1,74 +1,41 @@
-import argparse
-from pathlib import Path
-import time
-
+import os
+import sys
+import tiktoken
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-import tiktoken
+
+# hyperparameters (Must match your trained model exactly)
+BLOCK_SIZE = 20
+N_EMBD = 6
+N_HEAD = 4
+N_LAYER = 4
+DROPOUT = 0.0  # Set to 0 for deterministic inference evaluation
+MODEL_WEIGHTS_PATH = "llm.pt"
+# -----------------------------------
+DEVICE = (
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps"
+    if torch.backends.mps.is_available()
+    else "cpu"
+)
 
 
-ARROW = "->"
+class MiniQuadtrixHead(nn.Module):
 
-block_size = 32
-n_embd = 64
-n_head = 4
-n_layer = 4
-dropout = 0.1
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def header(title, subtitle=""):
-    print(f"  {title}")
-    if subtitle:
-        print(f"  {subtitle}")
-
-
-def row(label, value="", unit="", note=""):
-    label_col = f"  {label:<28}"
-    value_col = f"{str(value):<20}"
-    unit_col = f"{unit:<8}"
-    note_col = f"  {note}" if note else ""
-    print(f"{label_col}{value_col}{unit_col}{note_col}")
-
-
-def rule():
-    print(f"")
-
-
-def blank():
-    print()
-
-
-def get_tokenizer(encoding_name="gpt2"):
-    tokenizer = tiktoken.get_encoding(encoding_name)
-    return tokenizer, tokenizer.n_vocab
-
-
-def encode(text, tokenizer):
-    return tokenizer.encode(text)
-
-
-def decode(tokens, tokenizer):
-    return tokenizer.decode(tokens)
-
-
-tokenizer, vocab_size = get_tokenizer("gpt2")
-
-
-class Head(nn.Module):
     def __init__(self, head_size):
         super().__init__()
-        self.key = nn.Linear(n_embd, head_size, bias=False)
-        self.query = nn.Linear(n_embd, head_size, bias=False)
-        self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.register_buffer("tril", torch.tril(
-            torch.ones(block_size, block_size)))
-        self.dropout = nn.Dropout(dropout)
+        self.key = nn.Linear(N_EMBD, head_size, bias=False)
+        self.query = nn.Linear(N_EMBD, head_size, bias=False)
+        self.value = nn.Linear(N_EMBD, head_size, bias=False)
+        self.register_buffer(
+            "tril", torch.tril(torch.ones(BLOCK_SIZE, BLOCK_SIZE))
+        )
+        self.dropout = nn.Dropout(DROPOUT)
 
     def forward(self, x):
-        _, T, _ = x.shape
+        B, T, C = x.shape
         k = self.key(x)
         q = self.query(x)
         wei = q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5
@@ -78,38 +45,43 @@ class Head(nn.Module):
         return wei @ self.value(x)
 
 
-class MultiHeadAttention(nn.Module):
+class MiniQuadtrixMHA(nn.Module):
+
     def __init__(self, num_heads, head_size):
         super().__init__()
-        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
-        self.proj = nn.Linear(head_size * num_heads, n_embd)
-        self.dropout = nn.Dropout(dropout)
+        self.heads = nn.ModuleList(
+            [MiniQuadtrixHead(head_size) for _ in range(num_heads)]
+        )
+        self.proj = nn.Linear(head_size * num_heads, N_EMBD)
+        self.dropout = nn.Dropout(DROPOUT)
 
     def forward(self, x):
         out = torch.cat([h(x) for h in self.heads], dim=-1)
         return self.dropout(self.proj(out))
 
 
-class FeedForward(nn.Module):
+class MiniQuadtrixFFN(nn.Module):
+
     def __init__(self, n_embd):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(n_embd, 4 * n_embd),
             nn.ReLU(),
             nn.Linear(4 * n_embd, n_embd),
-            nn.Dropout(dropout),
+            nn.Dropout(DROPOUT),
         )
 
     def forward(self, x):
         return self.net(x)
 
 
-class Block(nn.Module):
+class MiniQuadtrixBlock(nn.Module):
+
     def __init__(self, n_embd, n_head):
         super().__init__()
         head_size = n_embd // n_head
-        self.sa = MultiHeadAttention(n_head, head_size)
-        self.ffwd = FeedForward(n_embd)
+        self.sa = MiniQuadtrixMHA(n_head, head_size)
+        self.ffwd = MiniQuadtrixFFN(n_embd)
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
 
@@ -119,164 +91,115 @@ class Block(nn.Module):
         return x
 
 
-class GPTLanguageModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
-        self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.blocks = nn.Sequential(
-            *[Block(n_embd, n_head=n_head) for _ in range(n_layer)])
-        self.ln_f = nn.LayerNorm(n_embd)
-        self.lm_head = nn.Linear(n_embd, vocab_size)
+class MiniQuadtrix(nn.Module):
 
-    def forward(self, idx, targets=None):
+    def __init__(self, vocab_size):
+        super().__init__()
+        self.token_embedding_table = nn.Embedding(vocab_size, N_EMBD)
+        self.position_embedding_table = nn.Embedding(BLOCK_SIZE, N_EMBD)
+        self.blocks = nn.Sequential(
+            *[
+                MiniQuadtrixBlock(N_EMBD, n_head=N_HEAD)
+                for _ in range(N_LAYER)
+            ]
+        )
+        self.ln_f = nn.LayerNorm(N_EMBD)
+        self.lm_head = nn.Linear(N_EMBD, vocab_size)
+
+    def forward(self, idx):
         B, T = idx.shape
         tok_emb = self.token_embedding_table(idx)
-        pos_emb = self.position_embedding_table(torch.arange(T, device=device))
+        pos_emb = self.position_embedding_table(
+            torch.arange(T, device=idx.device)
+        )
         x = tok_emb + pos_emb
         x = self.blocks(x)
         x = self.ln_f(x)
         logits = self.lm_head(x)
+        return logits
 
-        if targets is None:
-            loss = None
-        else:
-            B, T, C = logits.shape
-            logits = logits.view(B * T, C)
-            targets = targets.view(B * T)
-            loss = F.cross_entropy(logits, targets)
-        return logits, loss
-
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+    def generate(self, idx, max_new_tokens):
+        # idx shape: (Batch_Size, Context_Length)
         for _ in range(max_new_tokens):
-            idx_cond = idx[:, -block_size:]
-            logits, _ = self(idx_cond)
-            logits = logits[:, -1, :] / max(temperature, 1e-6)
-
-            if top_k is not None:
-                values, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < values[:, [-1]]] = float("-inf")
-
+            idx_cond = idx[:, -BLOCK_SIZE:]
+            logits = self(idx_cond)
+            # Extract last token slice for all batches
+            logits = logits[:, -1, :]
             probs = F.softmax(logits, dim=-1)
             idx_next = torch.multinomial(probs, num_samples=1)
             idx = torch.cat((idx, idx_next), dim=1)
-            yield idx_next.item()
+        return idx
 
 
-def default_checkpoint_path():
-    script_dir = Path(__file__).resolve().parent
-    candidates = [
-        script_dir / "best_model.pt",
-        Path.cwd() / "best_model.pt",
-        Path.cwd() / "engine" / "best_model.pt",
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return script_dir / "best_model.pt"
+def load_tokenizer(encoding_name="o200k_base"):
+    tokenizer = tiktoken.get_encoding(encoding_name)
+    return tokenizer, tokenizer.n_vocab
 
 
-def load_model(checkpoint_path):
-    checkpoint_path = Path(checkpoint_path)
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(
-            f"Checkpoint not found: {checkpoint_path}\n"
-            "Train first with engine/main.py, or pass --checkpoint path/to/best_model.pt"
+@torch.inference_mode()
+def main():
+    print("=" * 50)
+    print("llm Inference Engine")
+    print(f"Target Device: {DEVICE.upper()}")
+    print("=" * 50)
+
+    tokenizer, vocab_size = load_tokenizer("o200k_base")
+    if not os.path.exists(MODEL_WEIGHTS_PATH):
+        print(
+            f"Error: Weights file '{MODEL_WEIGHTS_PATH}' not found. Please train the model first."
         )
+        sys.exit(1)
 
-    model = GPTLanguageModel().to(device)
-    state_dict = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(state_dict)
+    model = MiniQuadtrix(vocab_size).to(DEVICE)
+    model.load_state_dict(
+        torch.load(MODEL_WEIGHTS_PATH, map_location=DEVICE, weights_only=True)
+    )
     model.eval()
-    return model
+    try:
+        # Fuses operations and parallelizes execution sub-graphs natively
+        model = torch.compile(model)
+        print("Graph compilation successful (torch.compile applied).")
+    except Exception:
+        print("Proceeding without torch.compile graph optimizations.")
 
-
-def stream_response(model, prompt, max_new_tokens, temperature, top_k):
-    encoded_prompt = encode(prompt, tokenizer)
-    context = torch.tensor([encoded_prompt], dtype=torch.long, device=device)
-
-    with torch.no_grad():
-        for token_id in model.generate(
-            context,
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            top_k=top_k,
-        ):
-            word = decode([token_id], tokenizer)
-            yield word
-
-
-def generate_response(model, prompt, max_new_tokens, temperature, top_k):
-    return "".join(stream_response(model, prompt, max_new_tokens, temperature, top_k)).strip()
-
-
-def chat(model, args):
-    header("INFERENCE", "quit / exit / q -> end session")
-    blank()
+    print("\nEntering Chat Mode. Type 'exit' or 'quit' to stop.")
+    print(
+        "Parallel Generation Mode: Returns 3 alternative paths simultaneously.\n"
+    )
 
     while True:
-        prompt = input(f" >> ").strip()
-        if prompt.lower() in ("quit", "exit", "q"):
-            blank()
-            print("  Session ended.")
+        try:
+            prompt = input("User > ").strip()
+            if prompt.lower() in ("quit", "exit", "q"):
+                print("\nGoodbye.")
+                break
+            if not prompt:
+                continue
+
+            # Tokenize input
+            tokens = tokenizer.encode(prompt)
+
+            # Leverage Batch Parallelism: Replicate the prompt tensor across dimension 0
+            # This forces the GPU/CPU to execute 3 generations in parallel operations
+            num_parallel_samples = 3
+            context = (
+                torch.tensor([tokens], dtype=torch.long, device=DEVICE)
+                .repeat(num_parallel_samples, 1)
+            )
+
+            output_ids = model.generate(context, max_new_tokens=60)
+
+            print(
+                f"\nModel Responses ({num_parallel_samples} Parallel Paths):")
+            for i in range(num_parallel_samples):
+                new_tokens = output_ids[i][len(tokens):].tolist()
+                response = tokenizer.decode(new_tokens).strip()
+                print(f"  Path {i+1} -> {response}")
+            print("-" * 50)
+
+        except KeyboardInterrupt:
+            print("\nSession interrupted.")
             break
-        if not prompt:
-            continue
-
-        blank()
-        print(f"  ", end="", flush=True)
-        for word in stream_response(
-            model,
-            prompt,
-            args.max_new_tokens,
-            args.temperature,
-            args.top_k,
-        ):
-            print(word, end="", flush=True)
-        blank()
-        blank()
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Run inference from an engine trained .pt checkpoint.")
-    parser.add_argument(
-        "--checkpoint",
-        type=Path,
-        default=default_checkpoint_path(),
-        help="Path to the .pt file generated by engine/main.py.",
-    )
-    parser.add_argument("--prompt", type=str, default=None,
-                        help="Generate once from this prompt.")
-    parser.add_argument("--max-new-tokens", type=int, default=200)
-    parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--top-k", type=int, default=None)
-    return parser.parse_args()
-
-
-def main():
-    args = parse_args()
-    start = time.time()
-    blank()
-    rule()
-
-    model = load_model(args.checkpoint)
-
-    if args.prompt:
-        for word in stream_response(
-            model,
-            args.prompt,
-            args.max_new_tokens,
-            args.temperature,
-            args.top_k,
-        ):
-            print(word, end="", flush=True)
-        blank()
-    else:
-        chat(model, args)
-
-    blank()
-    row("Total", f"{time.time() - start:.2f}s")
 
 
 if __name__ == "__main__":
