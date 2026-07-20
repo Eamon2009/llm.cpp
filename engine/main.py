@@ -6,105 +6,52 @@ import sys
 import os
 from pathlib import Path
 import tiktoken
-#  LOGGING UTILITIES
-W = 78
-DOUBLE = "=" * W
-SINGLE = "-" * W
-TICK = "best"
-ARROW = ">"
 
-LOG_DIR = Path(__file__).resolve().parent / "logs"
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-LOG_PATH = LOG_DIR / f"run_{time.strftime('%Y%m%d_%H%M%S')}.txt"
 SCRIPT_DIR = Path(__file__).resolve().parent
 
+print("[llm]")
+print()
+print(f"Device: {'CUDA' if torch.cuda.is_available() else 'CPU'}")
+print(f"PyTorch: {torch.__version__}")
 
-def log(message=""):
-    line = "" if message == "" else f"{time.strftime('%Y-%m-%d %H:%M:%S')} | {message}"
-    print(line)
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(f"{line}\n")
-
-
-def header(title, subtitle=""):
-    log()
-    log(DOUBLE)
-    log(f"  {title}")
-    if subtitle:
-        log(f"  {subtitle}")
-    log(DOUBLE)
-
-
-def row(label, value="", unit="", note=""):
-    label_col = f"  {label:<28}"
-    value_col = f"{str(value):<20}"
-    unit_col = f"{unit:<8}"
-    note_col = f"  {note}" if note else ""
-    log(f"{label_col}{value_col}{unit_col}{note_col}")
-
-
-def rule():   log(f"  {SINGLE}")
-def blank():  log()
-def info(msg):    log(f"  {ARROW}  {msg}")
-def success(msg): log(f"  ok  {msg}")
-
-
-#  SESSION
-
-
-log(f"{'Quadtrix':^{W}}")
-blank()
 start = time.time()
-
-#  CONFIGURATION
-
-
 cleaned_path = Path(os.environ.get("data", SCRIPT_DIR / "input.txt"))
 train_split = 0.9
 seed = 1337
-
-
+batch_size = 2
+block_size = 20
+max_iters = 10000
+eval_interval = 1
+learning_rate = 3e-4
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-dropout = 0.1
-block_size = 256
-n_embd = 192
-n_head = 6
-n_layer = 6
-batch_size = 64
-max_iters = 5000
-eval_interval = 250
-learning_rate = 6e-4
-eval_iters = 200
-dropout = 0.1
+eval_iters = 1
+n_embd = 6
+n_head = 4
+n_layer = 4
+dropout = 0.0
 
 torch.manual_seed(seed)
 
 
-# tokenizer
-
-def get_tokenizer(encoding_name="o200k_base"):
-    tokenizer = tiktoken.get_encoding(encoding_name)
-    vocab_size = tokenizer.n_vocab
-    return tokenizer, vocab_size
+def get_miniq_tokenizer(encoding_name="o200k_base"):
+    miniq_tokenizer = tiktoken.get_encoding(encoding_name)
+    miniq_vocab_size = miniq_tokenizer.n_vocab
+    return miniq_tokenizer, miniq_vocab_size
 
 
-def encode(text, tokenizer): return tokenizer.encode(text)
-def decode(tokens, tokenizer): return tokenizer.decode(tokens)
+def miniq_encode(text, tokenizer): return tokenizer.encode(text)
+def miniq_decode(tokens, tokenizer): return tokenizer.decode(tokens)
 
 
-#  DATA
 with open(cleaned_path, 'r', encoding='utf-8') as f:
     text = f.read()
 
-tokenizer, vocab_size = get_tokenizer("o200k_base")
-encoded_data = encode(text, tokenizer)
-
+miniq_tokenizer, vocab_size = get_miniq_tokenizer("o200k_base")
+encoded_data = miniq_encode(text, miniq_tokenizer)
 data = torch.tensor(encoded_data, dtype=torch.long)
 n = int(train_split * len(data))
 train_data = data[:n]
 val_data = data[n:]
-
-#  Batch and LOSS
 
 
 def get_batch(split):
@@ -119,21 +66,19 @@ def get_batch(split):
 @torch.no_grad()
 def estimate_loss():
     out = {}
-    model.eval()
+    miniq_model.eval()
     for split in ['train', 'val']:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
             X, Y = get_batch(split)
-            _, loss = model(X, Y)
+            _, loss = miniq_model(X, Y)
             losses[k] = loss.item()
         out[split] = losses.mean()
-    model.train()
+    miniq_model.train()
     return out
 
-# model
 
-
-class Head(nn.Module):
+class MiniQuadtrixHead(nn.Module):
     def __init__(self, head_size):
         super().__init__()
         self.key = nn.Linear(n_embd, head_size, bias=False)
@@ -154,10 +99,11 @@ class Head(nn.Module):
         return wei @ self.value(x)
 
 
-class MultiHeadAttention(nn.Module):
+class MiniQuadtrixMHA(nn.Module):
     def __init__(self, num_heads, head_size):
         super().__init__()
-        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        self.heads = nn.ModuleList(
+            [MiniQuadtrixHead(head_size) for _ in range(num_heads)])
         self.proj = nn.Linear(head_size * num_heads, n_embd)
         self.dropout = nn.Dropout(dropout)
 
@@ -166,7 +112,7 @@ class MultiHeadAttention(nn.Module):
         return self.dropout(self.proj(out))
 
 
-class FeedFoward(nn.Module):
+class MiniQuadtrixFFN(nn.Module):
     def __init__(self, n_embd):
         super().__init__()
         self.net = nn.Sequential(
@@ -180,12 +126,12 @@ class FeedFoward(nn.Module):
         return self.net(x)
 
 
-class Block(nn.Module):
+class MiniQuadtrixBlock(nn.Module):
     def __init__(self, n_embd, n_head):
         super().__init__()
         head_size = n_embd // n_head
-        self.sa = MultiHeadAttention(n_head, head_size)
-        self.ffwd = FeedFoward(n_embd)
+        self.sa = MiniQuadtrixMHA(n_head, head_size)
+        self.ffwd = MiniQuadtrixFFN(n_embd)
         self.ln1 = nn.LayerNorm(n_embd)
         self.ln2 = nn.LayerNorm(n_embd)
 
@@ -195,13 +141,13 @@ class Block(nn.Module):
         return x
 
 
-class GPTLanguageModel(nn.Module):
+class MiniQuadtrix(nn.Module):
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
         self.blocks = nn.Sequential(
-            *[Block(n_embd, n_head=n_head) for _ in range(n_layer)])
+            *[MiniQuadtrixBlock(n_embd, n_head=n_head) for _ in range(n_layer)])
         self.ln_f = nn.LayerNorm(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
         self.apply(self._init_weights)
@@ -243,163 +189,103 @@ class GPTLanguageModel(nn.Module):
         return idx
 
 
-#  INITIALISE
-model = GPTLanguageModel().to(device)
-n_params = sum(p.numel() for p in model.parameters())
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+miniq_model = MiniQuadtrix().to(device)
+miniq_n_params = sum(p.numel() for p in miniq_model.parameters())
+miniq_optimizer = torch.optim.AdamW(miniq_model.parameters(), lr=learning_rate)
 
-
-def count_activations(m, bs, seq_len, dev):
-    total = 0
-    hooks = []
-
-    def _hook(module, inp, out):
-        nonlocal total
-        if isinstance(out, torch.Tensor):
-            total += out.numel()
-    for mod in m.modules():
-        hooks.append(mod.register_forward_hook(_hook))
-    dummy = torch.zeros(bs, seq_len, dtype=torch.long, device=dev)
-    with torch.no_grad():
-        m(dummy)
-    for h in hooks:
-        h.remove()
-    return total
-
-
-_num_activations = count_activations(model, batch_size, block_size, device)
-
-#
-_train_batches = len(train_data) // (batch_size * block_size)
-_val_batches = len(val_data) // (batch_size * block_size)
-
-row("Batch size", batch_size)
-row("Block size", block_size)
-row("Parameters", f"{n_params:,}")
-blank()
-
-# training
-header("TRAINING",
-       f"{max_iters:,} steps | eval every {eval_interval} | checkpoint on improvement")
-blank()
+print("CONFIG")
+print(f"Seed: {seed}")
+print(f"Batch size: {batch_size}")
+print(f"Block size: {block_size}")
+print(f"Learning rate: {learning_rate}")
+print(f"Layers: {n_layer}")
+print(f"Heads: {n_head}")
+print(f"Embedding dim: {n_embd}")
+print(f"Dropout: {dropout}")
+print(f"Parameters: {miniq_n_params:,}")
+print(f"Train tokens: {len(train_data):,}")
+print(f"Val tokens: {len(val_data):,}")
+print(f"Data file: {str(cleaned_path)}")
+print()
 
 best_val_loss = float('inf')
 train_start = time.time()
+prev_loss = None
 
 for iter in range(max_iters):
     if iter % eval_interval == 0 or iter == max_iters - 1:
         losses = estimate_loss()
+        elapsed = time.time() - train_start
+        total_norm = 0
+        for p in miniq_model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.detach().data.norm(2)
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+
+        tokens_per_sec = (iter + 1) * batch_size * \
+            block_size / elapsed if elapsed > 0 else 0
+
         is_best = losses['val'] < best_val_loss
         if is_best:
             best_val_loss = losses['val']
-            torch.save(model.state_dict(), 'best_model.pt')
-        log(f"  val loss {losses['val']:.6f}")
+            torch.save(miniq_model.state_dict(), 'llm.pt')
+
+        print(
+            f"step {iter} | loss: {losses['train']:.6f} | lr {learning_rate:.4e} | norm: {total_norm:.4f} | dt: {elapsed*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
         sys.stdout.flush()
-    step_start = time.time()
 
     xb, yb = get_batch('train')
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad(set_to_none=True)
+    logits, loss = miniq_model(xb, yb)
+    miniq_optimizer.zero_grad(set_to_none=True)
     loss.backward()
-
-    # real grad norm (after backward, before step)
-    grad_norm = 0.0
-    for p in model.parameters():
-        if p.grad is not None:
-            grad_norm += p.grad.detach().data.norm(2).item() ** 2
-    grad_norm = grad_norm ** 0.5
-
-    optimizer.step()
-
-    # real per-step dt and tok/sec
-    step_dt_ms = (time.time() - step_start) * 1000
-    tok_per_sec = (batch_size * block_size) / (step_dt_ms / 1000.0)
-
-    # real current lr from optimizer state
-    cur_lr = optimizer.param_groups[0]['lr']
-
-    line = (f"step {iter} | loss: {loss.item():.6f} | lr {cur_lr:.4e} | norm: {grad_norm:.4f} | dt: {step_dt_ms:.2f}ms | tok/sec: {tok_per_sec:.2f}")
-    print(line)
-    with open(LOG_PATH, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
-
-    # sample 100 tokens every 50 steps
-    if (iter + 1) % 50 == 0:
-        model.eval()
-        context = torch.zeros((1, 1), dtype=torch.long, device=device)
-        with torch.no_grad():
-            sample_ids = model.generate(context, max_new_tokens=100)
-        sample_text = decode(sample_ids[0].tolist(), tokenizer)
-        model.train()
-        blank()
-        log(f"  [sample @ step {iter + 1}]")
-        log(f"  {'-' * 60}")
-        log(f"  {sample_text.strip()}")
-        log(f"  {'-' * 60}")
-        blank()
+    miniq_optimizer.step()
 
 total_time = time.time() - train_start
-blank()
-rule()
-row("Duration",       f"{int(total_time // 60)}m {int(total_time % 60):02d}s")
-row("Best val loss",  f"{best_val_loss:.4f}", "", TICK)
-row("Checkpoint",     "best_model.pt",        "", TICK)
-rule()
 
+print()
+print(f"Duration: {int(total_time // 60)}m {int(total_time % 60):02d}s")
+print(f"Best val loss: {best_val_loss:.4f}")
+print()
 
-#  RESTORE CHECKPOINT
-blank()
-model.load_state_dict(torch.load(
-    'best_model.pt', map_location=device, weights_only=True))
-model.eval()
-success(f"Restored best_model.pt | val loss {best_val_loss:.4f}")
+miniq_model.load_state_dict(torch.load(
+    'mini-quadtrix.pt', map_location=device, weights_only=True))
+miniq_model.eval()
 
-#  INFERENCE
-
-
-header("INFERENCE", "quit / exit / q -> end session")
-blank()
+print("INFERENCE")
+print()
 
 try:
     while True:
-        prompt = input(f"  user  {ARROW} ").strip()
-        log(f"  You  {ARROW} {prompt}")
-
+        prompt = input("user > ").strip()
         if prompt.lower() in ("quit", "exit", "q"):
-            blank()
-            success("Session ended.")
+            print()
+            print("Session ended.")
             break
-
         if not prompt:
             continue
 
-        encoded_prompt = encode(prompt, tokenizer)
+        encoded_prompt = miniq_encode(prompt, miniq_tokenizer)
         context = torch.tensor(
             [encoded_prompt], dtype=torch.long, device=device)
 
         with torch.no_grad():
-            output_ids = model.generate(context, max_new_tokens=200)
+            output_ids = miniq_model.generate(context, max_new_tokens=200)
 
         new_tokens = output_ids[0][len(encoded_prompt):].tolist()
-        response = decode(new_tokens, tokenizer).strip()
+        response = miniq_decode(new_tokens, miniq_tokenizer).strip()
 
-        blank()
-        log(f"  Model {ARROW} {response}")
-        blank()
+        print()
+        print(f"Model > {response}")
+        print()
 
 except KeyboardInterrupt:
-    blank()
-    success("Interrupted.")
+    print()
+    print("Interrupted.")
 
+wall_clock = time.time() - start
 
-end = time.time()
-wall_clock = end - start
-
-blank()
-rule()
-row("Training",     f"{int(total_time // 60)}m {int(total_time % 60):02d}s")
-row("Total",
-    f"{int(wall_clock // 60)}m {int(wall_clock % 60):02d}s", "", TICK)
-rule()
-blank()
-log(f"{DOUBLE}\n")
+print()
+print(f"Training: {int(total_time // 60)}m {int(total_time % 60):02d}s")
+print(f"Total: {int(wall_clock // 60)}m {int(wall_clock % 60):02d}s")
+print()
