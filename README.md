@@ -255,7 +255,7 @@ static const int MAX_ITERS    = 3000;
 For an optimized native build:
 
 ```bash
-g++ -std=c++17 -O3 -march=native -I. -Iinclude -o llm.exe main.cpp
+g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
 ```
 
 ## the PyTorch reference path
