@@ -3,6 +3,7 @@ name: Build & Test
 on:
   push:
     branches: [ master, main, develop ]
+
 jobs:
   cpp-quality:
     runs-on: ubuntu-latest
@@ -22,7 +23,7 @@ jobs:
       - name: Clang-Format Check
         id: clang-format
         run: |
-          echo "### 🔍 Clang-Format Code Style Check" >> $GITHUB_STEP_SUMMARY
+          echo "###  Clang-Format Code Style Check" >> $GITHUB_STEP_SUMMARY
           find . -name "*.cpp" -o -name "*.h" -o -name "*.hpp" | grep -v build > cpp_files.txt
           
           if [ -s cpp_files.txt ]; then
@@ -32,10 +33,10 @@ jobs:
               cat format_output.txt >> $GITHUB_STEP_SUMMARY
               exit 1
             else
-              echo " Code formatting is correct" >> $GITHUB_STEP_SUMMARY
+              echo "Code formatting is correct" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo " No C++ files found" >> $GITHUB_STEP_SUMMARY
+            echo "No C++ files found" >> $GITHUB_STEP_SUMMARY
           fi
         continue-on-error: true
 
@@ -55,7 +56,7 @@ jobs:
             echo "Issues detected:" >> $GITHUB_STEP_SUMMARY
             cat cppcheck_output.txt >> $GITHUB_STEP_SUMMARY
           else
-            echo " No critical issues found" >> $GITHUB_STEP_SUMMARY
+            echo "No critical issues found" >> $GITHUB_STEP_SUMMARY
           fi
         continue-on-error: true
 
@@ -88,7 +89,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -101,10 +102,10 @@ jobs:
       - name: Black Format Check
         id: black
         run: |
-          echo "###  Black Code Formatting" >> $GITHUB_STEP_SUMMARY
+          echo "### Black Code Formatting" >> $GITHUB_STEP_SUMMARY
           black --check --diff . 2>&1 | tee black_output.txt || true
           if [ $? -ne 0 ]; then
-            echo " Formatting issues detected:" >> $GITHUB_STEP_SUMMARY
+            echo "Formatting issues detected:" >> $GITHUB_STEP_SUMMARY
             head -30 black_output.txt >> $GITHUB_STEP_SUMMARY
           else
             echo "Black formatting passed" >> $GITHUB_STEP_SUMMARY
@@ -127,27 +128,27 @@ jobs:
       - name: Flake8 Linting
         id: flake8
         run: |
-          echo "###  Flake8 Linting" >> $GITHUB_STEP_SUMMARY
+          echo "### Flake8 Linting" >> $GITHUB_STEP_SUMMARY
           flake8 . --max-line-length=127 --count --statistics 2>&1 | tee flake8_output.txt || true
           if [ $? -ne 0 ]; then
             echo "Linting violations:" >> $GITHUB_STEP_SUMMARY
             cat flake8_output.txt >> $GITHUB_STEP_SUMMARY
           else
-            echo " Flake8 passed" >> $GITHUB_STEP_SUMMARY
+            echo "Flake8 passed" >> $GITHUB_STEP_SUMMARY
           fi
         continue-on-error: true
 
       - name: Pylint Analysis
         id: pylint
         run: |
-          echo "###  Pylint Code Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "### Pylint Code Analysis" >> $GITHUB_STEP_SUMMARY
           find . -name "*.py" -type f | grep -v __pycache__ | xargs pylint \
             --fail-under=7.0 \
             --disable=C0111,C0103,R0913,W0212 \
             2>&1 | tee pylint_output.txt || true
           
           if grep -q "rated at" pylint_output.txt; then
-            echo " Pylint analysis complete" >> $GITHUB_STEP_SUMMARY
+            echo "Pylint analysis complete" >> $GITHUB_STEP_SUMMARY
             tail -3 pylint_output.txt >> $GITHUB_STEP_SUMMARY
           fi
         continue-on-error: true
@@ -155,10 +156,10 @@ jobs:
       - name: Bandit Security Scan
         id: bandit
         run: |
-          echo "###  Bandit Security Check" >> $GITHUB_STEP_SUMMARY
+          echo "### Bandit Security Check" >> $GITHUB_STEP_SUMMARY
           bandit -r . -ll 2>&1 | tee bandit_output.txt || true
           if grep -q "Issue:" bandit_output.txt; then
-            echo " Security issues found:" >> $GITHUB_STEP_SUMMARY
+            echo "Security issues found:" >> $GITHUB_STEP_SUMMARY
             grep -A1 "Issue:" bandit_output.txt >> $GITHUB_STEP_SUMMARY
           else
             echo "No security issues detected" >> $GITHUB_STEP_SUMMARY
@@ -171,6 +172,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
       fail-fast: false
+
+    defaults:
+      run:
+        shell: bash
     
     steps:
       - uses: actions/checkout@v4
@@ -181,12 +186,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential g++
-
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install gcc
+          sudo apt-get install -y build-essential g++ libomp-dev
 
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
@@ -196,39 +196,57 @@ jobs:
       - name: Build inference executable
         id: build-inference
         run: |
-          echo "### 🔨 Building Inference Executable" >> $GITHUB_STEP_SUMMARY
+          echo "### Building Inference Executable" >> $GITHUB_STEP_SUMMARY
           
-          if [ -f "main.cpp" ]; then
-            g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp 2>&1 | tee inference_build.txt || true
-            
-            if [ -f "llm.exe" ] || [ -f "llm.exe.exe" ]; then
-              echo " Inference build successful" >> $GITHUB_STEP_SUMMARY
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            echo "Building for macOS with Metal framework support..."
+            if [ -f "llm.mm" ] && [ -f "main.cpp" ]; then
+              clang++ -std=c++17 -O3 -I. -Iinclude main.cpp llm.mm -framework Foundation -framework Metal -framework MetalPerformanceShaders -o llm 2>&1 | tee inference_build.txt || true
+            elif [ -f "main.cpp" ]; then
+              clang++ -std=c++17 -O3 -I. -Iinclude main.cpp -o llm 2>&1 | tee inference_build.txt || true
+            fi
+
+            if [ -f "llm" ]; then
+              echo "Inference build successful (macOS)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "Inference build failed" >> $GITHUB_STEP_SUMMARY
+              echo "Inference build failed (macOS)" >> $GITHUB_STEP_SUMMARY
               cat inference_build.txt >> $GITHUB_STEP_SUMMARY
             fi
+
           else
-            echo "main.cpp not found - skipping inference build" >> $GITHUB_STEP_SUMMARY
+            echo "Building for $RUNNER_OS with GCC..."
+            if [ -f "main.cpp" ]; then
+              g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp 2>&1 | tee inference_build.txt || true
+              
+              if [ -f "llm.exe" ]; then
+                echo "Inference build successful ($RUNNER_OS)" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "Inference build failed ($RUNNER_OS)" >> $GITHUB_STEP_SUMMARY
+                cat inference_build.txt >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "main.cpp not found - skipping inference build" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
         continue-on-error: true
 
       - name: Test inference executable
         id: test-inference
         run: |
-          echo "###  Testing Inference Executable" >> $GITHUB_STEP_SUMMARY
+          echo "### Testing Inference Executable" >> $GITHUB_STEP_SUMMARY
           
-          if [ -f "llm.exe" ] || [ -f "llm.exe.exe" ]; then
-            BINARY="llm.exe"
-            if [ ! -f "$BINARY" ]; then
-              BINARY="llm.exe.exe"
-            fi
-            
+          BINARY="llm.exe"
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            BINARY="llm"
+          fi
+
+          if [ -f "$BINARY" ]; then
             if [ -f "data/input.txt" ]; then
               ./$BINARY data/input.txt 2>&1 | tee inference_test.txt || true
               echo "Inference test completed" >> $GITHUB_STEP_SUMMARY
               head -20 inference_test.txt >> $GITHUB_STEP_SUMMARY
             else
-              echo " data/input.txt not found - skipping inference test" >> $GITHUB_STEP_SUMMARY
+              echo "data/input.txt not found - skipping inference test" >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "Inference executable not found" >> $GITHUB_STEP_SUMMARY
@@ -244,29 +262,29 @@ jobs:
             g++ -std=c++17 -O2 -I. -Iinclude llm.cpp train.cpp -o quadtrix_train 2>&1 | tee training_build.txt || true
             
             if [ -f "quadtrix_train" ] || [ -f "quadtrix_train.exe" ]; then
-              echo " Training build successful" >> $GITHUB_STEP_SUMMARY
+              echo "Training build successful" >> $GITHUB_STEP_SUMMARY
             else
-              echo " Training build failed" >> $GITHUB_STEP_SUMMARY
+              echo "Training build failed" >> $GITHUB_STEP_SUMMARY
               cat training_build.txt >> $GITHUB_STEP_SUMMARY
             fi
           elif [ -f "train.cpp" ]; then
-            echo " train.cpp found but llm.cpp not found - skipping training build" >> $GITHUB_STEP_SUMMARY
+            echo "train.cpp found but llm.cpp not found - skipping training build" >> $GITHUB_STEP_SUMMARY
           else
-            echo " train.cpp not found - skipping training build" >> $GITHUB_STEP_SUMMARY
+            echo "train.cpp not found - skipping training build" >> $GITHUB_STEP_SUMMARY
           fi
         continue-on-error: true
 
       - name: Test training executable
         id: test-training
         run: |
-          echo "###  Testing Training Executable" >> $GITHUB_STEP_SUMMARY
+          echo "### Testing Training Executable" >> $GITHUB_STEP_SUMMARY
           
-          if [ -f "quadtrix_train" ] || [ -f "quadtrix_train.exe" ]; then
-            BINARY="quadtrix_train"
-            if [ ! -f "$BINARY" ]; then
-              BINARY="quadtrix_train.exe"
-            fi
-            
+          BINARY="quadtrix_train"
+          if [ -f "quadtrix_train.exe" ]; then
+            BINARY="quadtrix_train.exe"
+          fi
+
+          if [ -f "$BINARY" ]; then
             echo "Running training executable (timeout 30s)..." >> $GITHUB_STEP_SUMMARY
             timeout 30 ./$BINARY 2>&1 | tee training_test.txt || true
             echo "Training test completed" >> $GITHUB_STEP_SUMMARY
@@ -289,7 +307,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -300,7 +318,7 @@ jobs:
           pip install pytest pytest-cov
           
           if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt 2>/dev/null || echo " Some requirements failed to install"
+            pip install -r requirements.txt 2>/dev/null || echo "Some requirements failed to install"
           fi
 
       - name: Run Python tests
@@ -313,11 +331,11 @@ jobs:
             if [ $? -eq 0 ]; then
               echo "All tests passed" >> $GITHUB_STEP_SUMMARY
             else
-              echo " Some tests failed" >> $GITHUB_STEP_SUMMARY
+              echo "Some tests failed" >> $GITHUB_STEP_SUMMARY
             fi
             tail -30 pytest_output.txt >> $GITHUB_STEP_SUMMARY
           else
-            echo " No test files found" >> $GITHUB_STEP_SUMMARY
+            echo "No test files found" >> $GITHUB_STEP_SUMMARY
           fi
         continue-on-error: true
 
