@@ -110,6 +110,10 @@ torchrun --standalone --nproc_per_node=4 train.py
 ## File structure
 
 ```text
+## 📂 Project Structure
+
+```text
+.
 ├── .devops/                        # DevOps, Docker, & proxy configurations
 │   ├── docker-compose.dev.yml      # Local development compose setup
 │   ├── docker-compose.gpu.yml      # Compose setup with GPU acceleration
@@ -120,81 +124,78 @@ torchrun --standalone --nproc_per_node=4 train.py
 │   ├── Dockerfile.frontend         # Frontend UI Docker setup
 │   └── nginx.conf                  # Reverse proxy configuration
 │
-├── .github/                        # CI/CD workflows and repository templates
+├── .github/                        # GitHub Actions CI/CD workflows & repository templates
 │   ├── ISSUE_TEMPLATE/             # Bug report & feature request templates
-│   ├── workflows/                  # GitHub Actions automation workflows
+│   │   ├── bug_report.md
+│   │   ├── config.yml
+│   │   └── feature_request.md
+│   ├── workflows/                  # CI/CD automation pipelines
+│   │   ├── check.yml
+│   │   ├── ci-approval.yml
+│   │   ├── ci.yml
+│   │   ├── docker-publish.yml
+│   │   ├── jekyll-gh-pages.yml
+│   │   ├── main.yml
+│   │   ├── pr-check.yml
+│   │   ├── release.yml
+│   │   └── test.yml
 │   ├── dependabot.yml              # Automated dependency update configuration
-│   └── pull_request_template.md    # PR contribution template
+│   └── pull_request_template.md    # Pull request contribution template
 │
-├── assets/                         # Execution screenshots & benchmark visuals
-├── benches/                        # Performance benchmarking & testing suites
-│   ├── bech(mm).mm                 # Metal-accelerated benchmark script
-│   └── bench.cpp                   # C++ execution benchmark
+├── assets/                         # Visual execution benchmarks & screenshots
+│   ├── run_2026-07-16 165731.png
+│   ├── run_20260430_192930.png
+│   ├── run_20260508_110726.png
+│   └── run_20260530_165216 (1).png
 │
-├── config/                         # Global project setup
+├── benches/                        # Performance benchmarking suite
+│   └── bench.cpp                   # C++ benchmark execution script
+│
+├── config/                         # Global project configurations
 │   └── config.h                    # C++ global configuration header
 │
 ├── data/                           # Dataset ingestion scripts & raw samples
 │   ├── data_set.py                 # Data loader preparation script
-│   └── input.txt                   # Sample input dataset text
+│   └── input.txt                   # Sample raw dataset text
+│
+├── docs/                           # Documentation media & report graphics
+│   └── training_report.png         # Model training performance chart
+│
 ├── engine/                         # Core execution & inference engines
-│   ├── distributed/                # Multi-node / multi-GPU execution
+│   ├── distributed/                # Multi-node / distributed training & inference
 │   │   ├── infer.py                # Distributed inference pipeline
 │   │   └── train.py                # Distributed training pipeline
-│   ├── iGPU/                       # Integrated GPU specific runtimes
-│   │   ├── inference.py
-│   │   └── main.py
 │   ├── llm.cpp/                    # Low-level CUDA/C++ runtime engine
-│   │   ├── config/                 # Engine specific configurations
+│   │   ├── config/                 # Engine-specific configurations
 │   │   ├── include/                # CUDA kernels & C++ architecture headers
-│   │   ├── best_model.bin          # Saved model binary weights
-│   │   ├── llm.cu                  # CUDA engine implementation
+│   │   ├── best_model.bin          # Trained binary weights checkpoint
+│   │   ├── llm.cu                  # CUDA GPU execution source
+│   │   ├── llm.exe                 # Compiled engine binary executable
+│   │   ├── llm.py                  # Engine Python bindings/wrapper
+│   │   ├── Makefile                # Engine build compilation setup
 │   │   └── train.mm                # Metal training harness
-│   ├── logs/                       # Runtime log files
-│   ├── fineweb_dataset.py          # FineWeb parsing logic
-│   ├── inference.py                # Python inference script
-│   └── main.py                     # Central Python execution entry point
+│   ├── logs/                       # Execution log files
+│   ├── inference.py                # Python model inference entry point
+│   ├── main.py                     # Primary Python execution entry point
+│   └── llm.pt                      # Pretrained PyTorch model checkpoint
 │
-├── include/                        # Core C++ neural network header blocks
-│   ├── attention.h                 # Attention layer logic
-│   ├── backward.h                  # Backpropagation algorithm utilities
+├── include/                        # Core C++ neural network architecture headers
+│   ├── attention.h                 # Multi-head attention implementation
+│   ├── backward.h                  # Backpropagation & gradient calculation utilities
 │   ├── block.h                     # Transformer block assembly
-│   ├── dataloader.h                # C++ data processing pipeline
-│   ├── embedding.h                 # Token embedding logic
+│   ├── embedding.h                 # Token & positional embedding logic
 │   ├── feedforward.h               # Feed-forward layer implementation
-│   ├── gpt.h                       # Full GPT model architecture
-│   ├── layernorm.h                 # Layer normalization
-│   ├── linear.h                    # Dense linear layer
-│   ├── tensor.h                    # Tensor data structures
-│   └── torch_bridge.h              # PyTorch Interoperability bridge
+│   ├── gpt.h                       # Full GPT transformer architecture layout
+│   ├── layernorm.h                 # Layer normalization operations
+│   ├── linear.h                    # Fully connected dense layer
+│   ├── lm.h                        # High-level language model interface
+│   ├── sampler.h                   # Token sampling routines (Top-K, Top-P, Temperature)
+│   ├── tensor.h                    # Multidimensional array data structures
+│   ├── tokenizer.h                 # Text tokenization logic
+│   └── torch_bridge.h              # PyTorch interoperability layer
 │
 ├── scripts/                        # Automation & compilation scripts
-│   └── build.sh                    # Build orchestration script
 │
-├── train_test/                     # Prototyping & experimental scripts
-│   ├── model.py                    # Model layout prototype
-│   ├── test.c                      # Simple C test harness
-│   └── train2.mm                   # Metal training prototype
-│
-├── .clang-format                   # C++ formatting rules
-├── .dockerignore                   # Docker build exclusions
-├── .gitattributes                  # Git repository attribute rules
-├── .gitignore                      # Git version control exclusions
-├── .gitmodules                     # Git submodule links
-├── .python-version                 # Environment Python version
-├── benchmark.cpp                   # Root benchmark runner
-├── CITATION.cff                    # Citation metadata file
-├── CODE_OF_CONDUCT.md              # Community behavior rules
-├── CONTRIBUTING.md                 # Contributor guidelines
-├── LICENSE                         # Repository license terms
-├── llm.mm                          # Metal/Objective-C++ source file
-├── main.cpp                        # Primary C++ entry point
-├── Makefile                        # Compilation build instructions
-├── mypy.ini                        # MyPy type checking setup
-├── README.md                       # Main repository overview
-├── requirements.txt                # Python dependencies list
-├── run.md                          # Quick start execution guide
-└── SECURITY.md                     # Vulnerability reporting instructions
 ```
 ---
 
