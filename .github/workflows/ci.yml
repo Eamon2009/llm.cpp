@@ -199,9 +199,9 @@ jobs:
           echo "### 🔨 Building Inference Executable" >> $GITHUB_STEP_SUMMARY
           
           if [ -f "main.cpp" ]; then
-            g++ -std=c++17 -O2 -I. -Iinclude -o quadtrix_inference main.cpp 2>&1 | tee inference_build.txt || true
+            g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp 2>&1 | tee inference_build.txt || true
             
-            if [ -f "quadtrix_inference" ] || [ -f "quadtrix_inference.exe" ]; then
+            if [ -f "llm.exe" ] || [ -f "llm.exe.exe" ]; then
               echo " Inference build successful" >> $GITHUB_STEP_SUMMARY
             else
               echo "Inference build failed" >> $GITHUB_STEP_SUMMARY
@@ -217,10 +217,10 @@ jobs:
         run: |
           echo "###  Testing Inference Executable" >> $GITHUB_STEP_SUMMARY
           
-          if [ -f "quadtrix_inference" ] || [ -f "quadtrix_inference.exe" ]; then
-            BINARY="quadtrix_inference"
+          if [ -f "llm.exe" ] || [ -f "llm.exe.exe" ]; then
+            BINARY="llm.exe"
             if [ ! -f "$BINARY" ]; then
-              BINARY="quadtrix_inference.exe"
+              BINARY="llm.exe.exe"
             fi
             
             if [ -f "data/input.txt" ]; then
