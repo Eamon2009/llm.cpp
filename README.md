@@ -9,19 +9,21 @@
 [![Release](https://img.shields.io/github/v/release/LMGNU/llm.cpp)](https://github.com/LMGNU/llm.cpp/releases) [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0) [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) 
 
 
-This project implements language models in dependency-free C++, eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[llm.mm](llm.mm) and the [include/](include) directory also a ***token level [BPE]*** [dataloder.h](LMGNU/include) implementation inside [LMGNU](LMGNU) . With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
+This project implements language models in dependency-free C++, eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[llm.mm](llm.mm) and the [include/](include) directory also a ***token level [BPE]*** [tokenizer.h](include/tokenizer.h) implementation inside [include](include). With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
 The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU training on 31.4 million characters, demonstrating that character-level language modeling at this scale is highly tractable on commodity hardware without external dependencies. On a GPU (CUDA/bfloat16), a validation loss of 2.3918 is reached in under 83 minutes, achieving a peak throughput of 19.6k tokens per second.
 
-## Leaderboar
-| S.No.| time | val_bpb | scale | Date | Contributors |
-|---|-------------|---------|------|------|--------------|
-| 1 | 14.2 hours | 0.6120 | 124M (8x A100) | 2019 | OpenAI (GPT-2 Base) |
-| 2 | 2.5 hours | 0.6945 | 50M (H100) | 2024 | Anthropic (Internal Proxy) |
-| 3 | 61.3 min | 0.7176 | 10.82M (T4) | Mar 2026 | @Eamon2009 |
-| 4 | 3.1 hours | 0.8012 | 14M (A100) | 2024 | Meta (MobileLLM) |
-| 5 | 6.1 min | 0.9250 | 1.99M (T4) | Feb 2026 | @Eamon2009 |
-| 6 | 39.4 min | 1.3145 | 0.82M (CPU) | Jan 2026 | @Eamon2009 |
-| 7 | 76.2 min | 1.6371 | 0.82M (CPU) | Jan 2026 | @Eamon2009 |
+## Board
+| S.No. | time | val_bpb / Metric | scale | Date | Contributors |
+|---|-------------|------------------|-------|------|--------------|
+| 1 | 168 hours | 29.41 PPL (~0.93 BPB) | 124M (32x TPU v3) | Feb 2019 | OpenAI (GPT-2 Small) |
+| 2 | 45 min | 3.28 Val Loss (~0.748 BPB) | 124M (8x H100) | May 2024 | Andrej Karpathy (llm.c) |
+| 3 | 2.98 min | 3.28 Val Loss (~0.748 BPB) | 124M (8x H100) | Feb 2025 | Keller Jordan et al. (Modded-NanoGPT) |
+| 4 | 72 hours | 22.7 PPL (~0.85 BPB) | 125M (32x A100) | Feb 2024 | Meta (MobileLLM-125M) |
+| 5 | ~24 hours | ~1.02 BPB | 135M (64x H100) | Jul 2024 | Hugging Face (SmolLM-135M) |
+| 6 | 61.3 min | 0.7176 | 10.82M (T4) | Mar 2026 | @Eamon2009 |
+| 7 | 6.1 min | 0.9250 | 1.99M (T4) | Feb 2026 | @Eamon2009 |
+| 8 | 39.4 min | 1.3145 | 0.82M (CPU) | July 2026 | @Eamon2009 |
+| 9 | 76.2 min | 1.6371 | 0.82M (CPU) | Jan 2026 | @Eamon2009 |
 
 More broadly, the primary contribution of this work lies in its absolute transparency. Every gradient in the backward pass is explicitly written and readable, and every tensor operation is a standard C++ function. By exposing exactly what frameworks like PyTorch compute under the hood, this implementation provides a clear educational pathway. We believe that this fundamental understanding is the true foundation of genuine expertise in deep learning.
 Alongside it sits a parallel PyTorch implementation in [engine/main.py](engine/main.py) and [engine/inference.py](engine/inference.py), so you can train and generate the same architecture with `torch` + `tiktoken` when you want speed instead of transparency. There's also an experimental integrated-GPU path in [iGPU/](engine/iGPU/). The point of this repo is the C++ core. The PyTorch exist to make the model usable, but if you're here to ***train a GPT without a framework*** doing the work for you, [include/backward.h](include/backward.h) is where to start reading.
@@ -49,7 +51,7 @@ which transfers all parameters to GPU memory; all subsequent `torch::matmul` cal
 
 ---
 
-## quick start (C++, train + chat)
+## quick start (CPU)
 
 The fastest way to see the whole pipeline - tokenize, train, checkpoint, generate - using the bundled character-level corpus:
 
@@ -61,12 +63,9 @@ python data_set.py  # also get any dataset from hugging face datasets
 ```
 
 ```bash
-g++ -std=c++17 -O2 -I. -Iinclude -o llm.exe main.cpp
+# run this 
+g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
 ./llm.exe data/input.txt
-# also
-cd LMGNU
-g++ -std=c++17 -O2 -I. -Iinclude -o llm.exe llm.cpp
-./llm.exe ../data/input.txt
 ```
 
 This trains from scratch on `data/input.txt` and writes the best checkpoint to `best_model.bin`. Once you have a checkpoint, generate or chat with it:
@@ -83,7 +82,30 @@ debugging tip: drop `-O2` for `-g` when compiling if you want to step through `i
 ```bash
 llm.exe [data_path] [--generate] [--chat] [--chat-tokens N]
 ```
-
+###  PyTorch (single-GPU + CPU)
+```bash
+# to train
+cd engine
+python main.py 
+# for inference stay in engine/
+python inference.py
+```
+### Multi-GPU
+Single GPU or CPU Mode (Default Fallback)
+If you do not pass any distributed environment parameters, the script automatically defaults to running locally on a single GPU (if available) or CPU.
+```bash
+cd engine
+cd distributed
+python train.py
+```
+### Single-Node Multi-GPU Training (DDP via torchrun)
+To train using multiple GPUs on a single machine, use PyTorch's torchrun launcher. Replace --nproc_per_node with the number of GPUs available on your machine (e.g., 2, 4, or 8).
+```bash
+cd engine
+cd distributed
+# Example: Running on 4 GPUs on a single machine
+torchrun --standalone --nproc_per_node=4 train.py
+```
 ---
 ## File structure
 
@@ -223,40 +245,6 @@ static const float DROPOUT = 0.05f;
 static const int BPE_VOCAB_SIZE = 2048; 
 ```
 
-## Character-level implemented in C++
-
-No third-party runtime dependency - it builds from `main.cpp`, `config/config.h`, and `include/*.h` alone.
-
-- Character-level tokenizer built directly from the input corpus
-- Train/validation split via `DataLoader`
-- Token + positional embeddings
-- Multi-head causal self-attention with explicit QKV projections
-- Pre-layer-norm residual transformer blocks
-- Feed-forward MLP with ReLU
-- Cross-entropy loss
-- **Fully analytical backward pass** - every gradient (attention, layer norm, MLP, embeddings) is derived and coded in `include/backward.h`, not autograd
-- AdamW optimizer (first/second moment estimates, weight decay)
-- Checkpoint save/load
-- Autoregressive generation and terminal chat mode
-
-Hyperparameters live in `config/config.h` and require a rebuild to take effect:
-
-```cpp
-static const int BATCH_SIZE   = 4;
-static const int BLOCK_SIZE   = 64;
-static const int N_EMBD       = 128;
-static const int N_HEAD       = 4;
-static const int N_LAYER      = 4;
-static const float DROPOUT    = 0.2f;
-static const float LEARNING_RATE = 3e-4f;
-static const int MAX_ITERS    = 3000;
-```
-
-For an optimized native build:
-
-```bash
-g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
-```
 
 ## the PyTorch reference path
 
@@ -305,10 +293,12 @@ I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-fre
 
 ## references
 
-- Vaswani et al., ["Attention Is All You Need"](https://arxiv.org/pdf/1706.03762), 2017
-- Radford et al., [GPT-2 technical work](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf), 2019
--  [nanoGPT](https://github.com/karpathy/nanoGPT) as educational reference points
--  [HuggingFace](https://huggingface.co/) for fineweb and other datasets.
+- Vaswani et al., ["Attention Is All You Need"](https://arxiv.org/abs/1706.03762), 2017
+- Radford et al., ["Language Models are Unsupervised Multitask Learners"](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf) (GPT-2 technical work), 2019
+- Brown et al., ["Language Models are Few-Shot Learners"](https://arxiv.org/abs/2005.14165) (GPT-3 paper), 2020
+- Meta AI, ["The Llama 3 Herd of Models"](https://arxiv.org/abs/2407.21783) (Llama 3 paper), 2024
+- Andrej Karpathy, [nanoGPT](https://github.com/karpathy/nanoGPT) repository as an educational reference point
+- [HuggingFace Datasets](https://huggingface.co/datasets) for FineWeb and other pretraining/fine-tuning datasets
 
 ## Cite
 
