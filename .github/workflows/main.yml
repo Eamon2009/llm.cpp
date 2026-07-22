@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     
     environment:
-      name: lmgnu
+      name: main
       
     steps:
     - name: Checkout Code with Full History
