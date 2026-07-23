@@ -7,12 +7,16 @@ on:
       - "**/*.py"
       - "**/*.cpp"
       - "**/*.c"
+      - "**/*.h"
+      - "**/*.hpp"
   pull_request:
     branches: [ "master" ]
     paths:
       - "**/*.py"
       - "**/*.cpp"
       - "**/*.c"
+      - "**/*.h"
+      - "**/*.hpp"
 
 jobs:
   syntax-check:
@@ -35,38 +39,32 @@ jobs:
 
     - name: Lint Python Files
       run: |
-        # Only checks syntax and severe errors
-        flake8 . --count --select=E999,F821,F822,F823 --show-source --statistics
-
-    # --- C/C++ Syntax Check ---
-    - name: Install C/C++ Compiler (GCC)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y gcc g++
-
+        # E9, F63, F7, F82 checks syntax errors & undefined variables
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
     - name: Check C/C++ Syntax
       run: |
         echo "Checking C and C++ files for syntax errors..."
         errors=0
         
-        # Using redirect loops to properly catch errors without subshell issues
+        # Loop through C files (-I. includes local root directory for header lookups)
         while read -r file; do
           if [ -z "$file" ]; then continue; fi
           echo "Checking $file"
-          if ! gcc -fsyntax-only "$file"; then
-            echo "Syntax error in $file"
+          if ! gcc -fsyntax-only -I. "$file"; then
+            echo "::error file=$file::Syntax error in $file"
             errors=$((errors + 1))
           fi
-        done < <(find . -name "*.c")
+        done < <(find . -type f -name "*.c")
 
+        # Loop through C++ files
         while read -r file; do
           if [ -z "$file" ]; then continue; fi
           echo "Checking $file"
-          if ! g++ -fsyntax-only "$file"; then
-            echo "syntax error in $file"
+          if ! g++ -fsyntax-only -I. "$file"; then
+            echo "::error file=$file::Syntax error in $file"
             errors=$((errors + 1))
           fi
-        done < <(find . -name "*.cpp")
+        done < <(find . -type f -name "*.cpp")
 
         if [ $errors -ne 0 ]; then
           echo "$errors file(s) failed syntax verification."

@@ -1,18 +1,38 @@
-import torch
-import torch.nn as nn
-from torch.nn import functional as F
-import time
-import sys
 import os
+import sys
+import time
 from pathlib import Path
 import tiktoken
+import torch
+import torch.distributed as dist
+import torch.nn as nn
+from torch.nn import functional as F
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-print("[llm]")
-print()
-print(f"Device: {'CUDA' if torch.cuda.is_available() else 'CPU'}")
-print(f"PyTorch: {torch.__version__}")
+# -------------------------------------
+ddp = int(os.environ.get("RANK", -1)) != -1
+if ddp:
+    dist.init_process_group(backend="nccl")
+    ddp_rank = int(os.environ.get("RANK"))
+    ddp_local_rank = int(os.environ.get("LOCAL_RANK"))
+    ddp_world_size = int(os.environ.get("WORLD_SIZE"))
+    device = f"cuda:{ddp_local_rank}"
+    torch.cuda.set_device(device)
+    master_process = ddp_rank == 0
+else:
+    # Fallback to local single-device execution
+    ddp_rank = 0
+    ddp_local_rank = 0
+    ddp_world_size = 1
+    master_process = True
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+if master_process:
+    print("[llm] - Distributed Cluster Mode Enabled")
+    print(f"PyTorch Version: {torch.__version__}")
+    print(f"Total Cluster GPUs (World Size): {ddp_world_size if ddp else 1}")
 
 start = time.time()
 cleaned_path = Path(os.environ.get("data", SCRIPT_DIR / "input.txt"))
@@ -21,16 +41,14 @@ seed = 1337
 batch_size = 2
 block_size = 20
 max_iters = 10000
-eval_interval = 1
+eval_interval = 50
 learning_rate = 3e-4
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-eval_iters = 1
+eval_iters = 20
 n_embd = 6
 n_head = 4
 n_layer = 4
 dropout = 0.0
-
-torch.manual_seed(seed)
+torch.manual_seed(seed + ddp_rank)
 
 
 def get_miniq_tokenizer(encoding_name="o200k_base"):
@@ -39,11 +57,16 @@ def get_miniq_tokenizer(encoding_name="o200k_base"):
     return miniq_tokenizer, miniq_vocab_size
 
 
-def miniq_encode(text, tokenizer): return tokenizer.encode(text)
-def miniq_decode(tokens, tokenizer): return tokenizer.decode(tokens)
+def miniq_encode(text, tokenizer):
+    return tokenizer.encode(text)
 
 
-with open(cleaned_path, 'r', encoding='utf-8') as f:
+def miniq_decode(tokens, tokenizer):
+    return tokenizer.decode(tokens)
+
+
+# All processes load the dataset
+with open(cleaned_path, "r", encoding="utf-8") as f:
     text = f.read()
 
 miniq_tokenizer, vocab_size = get_miniq_tokenizer("o200k_base")
@@ -55,10 +78,10 @@ val_data = data[n:]
 
 
 def get_batch(split):
-    data_split = train_data if split == 'train' else val_data
+    data_split = train_data if split == "train" else val_data
     ix = torch.randint(len(data_split) - block_size, (batch_size,))
-    x = torch.stack([data_split[i:i + block_size] for i in ix])
-    y = torch.stack([data_split[i + 1:i + block_size + 1] for i in ix])
+    x = torch.stack([data_split[i: i + block_size] for i in ix])
+    y = torch.stack([data_split[i + 1: i + block_size + 1] for i in ix])
     x, y = x.to(device), y.to(device)
     return x, y
 
@@ -66,26 +89,28 @@ def get_batch(split):
 @torch.no_grad()
 def estimate_loss():
     out = {}
-    miniq_model.eval()
-    for split in ['train', 'val']:
+    raw_model.eval()  # Use un-wrapped model instance references
+    for split in ["train", "val"]:
         losses = torch.zeros(eval_iters)
         for k in range(eval_iters):
             X, Y = get_batch(split)
             _, loss = miniq_model(X, Y)
             losses[k] = loss.item()
         out[split] = losses.mean()
-    miniq_model.train()
+    raw_model.train()
     return out
 
 
 class MiniQuadtrixHead(nn.Module):
+
     def __init__(self, head_size):
         super().__init__()
         self.key = nn.Linear(n_embd, head_size, bias=False)
         self.query = nn.Linear(n_embd, head_size, bias=False)
         self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.register_buffer('tril', torch.tril(
-            torch.ones(block_size, block_size)))
+        self.register_buffer(
+            "tril", torch.tril(torch.ones(block_size, block_size))
+        )
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -93,17 +118,19 @@ class MiniQuadtrixHead(nn.Module):
         k = self.key(x)
         q = self.query(x)
         wei = q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5
-        wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
+        wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
         wei = F.softmax(wei, dim=-1)
         wei = self.dropout(wei)
         return wei @ self.value(x)
 
 
 class MiniQuadtrixMHA(nn.Module):
+
     def __init__(self, num_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList(
-            [MiniQuadtrixHead(head_size) for _ in range(num_heads)])
+            [MiniQuadtrixHead(head_size) for _ in range(num_heads)]
+        )
         self.proj = nn.Linear(head_size * num_heads, n_embd)
         self.dropout = nn.Dropout(dropout)
 
@@ -113,6 +140,7 @@ class MiniQuadtrixMHA(nn.Module):
 
 
 class MiniQuadtrixFFN(nn.Module):
+
     def __init__(self, n_embd):
         super().__init__()
         self.net = nn.Sequential(
@@ -127,6 +155,7 @@ class MiniQuadtrixFFN(nn.Module):
 
 
 class MiniQuadtrixBlock(nn.Module):
+
     def __init__(self, n_embd, n_head):
         super().__init__()
         head_size = n_embd // n_head
@@ -142,12 +171,17 @@ class MiniQuadtrixBlock(nn.Module):
 
 
 class MiniQuadtrix(nn.Module):
+
     def __init__(self):
         super().__init__()
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
         self.blocks = nn.Sequential(
-            *[MiniQuadtrixBlock(n_embd, n_head=n_head) for _ in range(n_layer)])
+            *[
+                MiniQuadtrixBlock(n_embd, n_head=n_head)
+                for _ in range(n_layer)
+            ]
+        )
         self.ln_f = nn.LayerNorm(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
         self.apply(self._init_weights)
@@ -163,7 +197,9 @@ class MiniQuadtrix(nn.Module):
     def forward(self, idx, targets=None):
         B, T = idx.shape
         tok_emb = self.token_embedding_table(idx)
-        pos_emb = self.position_embedding_table(torch.arange(T, device=device))
+        pos_emb = self.position_embedding_table(
+            torch.arange(T, device=idx.device)
+        )
         x = tok_emb + pos_emb
         x = self.blocks(x)
         x = self.ln_f(x)
@@ -190,27 +226,28 @@ class MiniQuadtrix(nn.Module):
 
 
 miniq_model = MiniQuadtrix().to(device)
-miniq_n_params = sum(p.numel() for p in miniq_model.parameters())
+raw_model = miniq_model
+
+if ddp:
+    miniq_model = DDP(miniq_model, device_ids=[ddp_local_rank])
+    raw_model = miniq_model.module
+
+miniq_n_params = sum(p.numel() for p in raw_model.parameters())
 miniq_optimizer = torch.optim.AdamW(miniq_model.parameters(), lr=learning_rate)
 
-print("CONFIG")
-print(f"Seed: {seed}")
-print(f"Batch size: {batch_size}")
-print(f"Block size: {block_size}")
-print(f"Learning rate: {learning_rate}")
-print(f"Layers: {n_layer}")
-print(f"Heads: {n_head}")
-print(f"Embedding dim: {n_embd}")
-print(f"Dropout: {dropout}")
-print(f"Parameters: {miniq_n_params:,}")
-print(f"Train tokens: {len(train_data):,}")
-print(f"Val tokens: {len(val_data):,}")
-print(f"Data file: {str(cleaned_path)}")
-print()
+if master_process:
+    print("CONFIG")
+    print(f"Seed Configuration: {seed}")
+    print(f"Per-GPU Batch size: {batch_size}")
+    print(f"Effective Cluster Batch size: {batch_size * ddp_world_size}")
+    print(f"Block size: {block_size}")
+    print(f"Learning rate: {learning_rate}")
+    print(f"Parameters: {miniq_n_params:,}")
+    print(f"Train tokens: {len(train_data):,}")
+    print()
 
-best_val_loss = float('inf')
+best_val_loss = float("inf")
 train_start = time.time()
-prev_loss = None
 
 for iter in range(max_iters):
     if iter % eval_interval == 0 or iter == max_iters - 1:
@@ -223,19 +260,23 @@ for iter in range(max_iters):
                 total_norm += param_norm.item() ** 2
         total_norm = total_norm ** 0.5
 
-        tokens_per_sec = (iter + 1) * batch_size * \
-            block_size / elapsed if elapsed > 0 else 0
+        tokens_per_sec = (
+            (iter + 1) * batch_size * ddp_world_size * block_size / elapsed
+            if elapsed > 0
+            else 0
+        )
+        if master_process:
+            is_best = losses["val"] < best_val_loss
+            if is_best:
+                best_val_loss = losses["val"]
+                torch.save(raw_model.state_dict(), "llm.pt")
 
-        is_best = losses['val'] < best_val_loss
-        if is_best:
-            best_val_loss = losses['val']
-            torch.save(miniq_model.state_dict(), 'llm.pt')
+            print(
+                f"step {iter} | loss: {losses['train']:.6f} | val_loss: {losses['val']:.6f} | norm: {total_norm:.4f} | dt: {elapsed*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}"
+            )
+            sys.stdout.flush()
 
-        print(
-            f"step {iter} | loss: {losses['train']:.6f} | lr {learning_rate:.4e} | norm: {total_norm:.4f} | dt: {elapsed*1000:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
-        sys.stdout.flush()
-
-    xb, yb = get_batch('train')
+    xb, yb = get_batch("train")
     logits, loss = miniq_model(xb, yb)
     miniq_optimizer.zero_grad(set_to_none=True)
     loss.backward()
@@ -243,49 +284,49 @@ for iter in range(max_iters):
 
 total_time = time.time() - train_start
 
-print()
-print(f"Duration: {int(total_time // 60)}m {int(total_time % 60):02d}s")
-print(f"Best val loss: {best_val_loss:.4f}")
-print()
+if master_process:
+    print("\n" + "=" * 50)
+    print(
+        f"Training Duration: {int(total_time // 60)}m {int(total_time % 60):02d}s")
+    print(f"Best validation loss recorded: {best_val_loss:.4f}")
+    print("=" * 50 + "\n")
+    try:
+        raw_model.load_state_dict(
+            torch.load("llm.pt", map_location=device, weights_only=True)
+        )
+        raw_model.eval()
 
-miniq_model.load_state_dict(torch.load(
-    'mini-quadtrix.pt', map_location=device, weights_only=True))
-miniq_model.eval()
+        print("INFERENCE TERMINAL CHAT MODE")
+        print("Type 'exit' to terminate session.\n")
 
-print("INFERENCE")
-print()
+        while True:
+            prompt = input("user > ").strip()
+            if prompt.lower() in ("quit", "exit", "q"):
+                print("\nSession ended.")
+                break
+            if not prompt:
+                continue
 
-try:
-    while True:
-        prompt = input("user > ").strip()
-        if prompt.lower() in ("quit", "exit", "q"):
-            print()
-            print("Session ended.")
-            break
-        if not prompt:
-            continue
+            encoded_prompt = miniq_encode(prompt, miniq_tokenizer)
+            context = torch.tensor(
+                [encoded_prompt], dtype=torch.long, device=device
+            )
 
-        encoded_prompt = miniq_encode(prompt, miniq_tokenizer)
-        context = torch.tensor(
-            [encoded_prompt], dtype=torch.long, device=device)
+            with torch.no_grad():
+                output_ids = raw_model.generate(context, max_new_tokens=100)
 
-        with torch.no_grad():
-            output_ids = miniq_model.generate(context, max_new_tokens=200)
+            new_tokens = output_ids[0][len(encoded_prompt):].tolist()
+            response = miniq_decode(new_tokens, miniq_tokenizer).strip()
 
-        new_tokens = output_ids[0][len(encoded_prompt):].tolist()
-        response = miniq_decode(new_tokens, miniq_tokenizer).strip()
+            print(f"\nModel > {response}\n")
 
-        print()
-        print(f"Model > {response}")
-        print()
+    except (KeyboardInterrupt, FileNotFoundError):
+        print("\nInference interrupted or weight metrics file bypassed.")
 
-except KeyboardInterrupt:
-    print()
-    print("Interrupted.")
+    wall_clock = time.time() - start
+    print(
+        f"\nTotal process lifecycle runtime: {int(wall_clock // 60)}m {int(wall_clock % 60):02d}s\n")
 
-wall_clock = time.time() - start
-
-print()
-print(f"Training: {int(total_time // 60)}m {int(total_time % 60):02d}s")
-print(f"Total: {int(wall_clock // 60)}m {int(wall_clock % 60):02d}s")
-print()
+# Shutdown distributed worker nodes gracefully
+if ddp:
+    dist.destroy_process_group()

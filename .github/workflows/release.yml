@@ -32,8 +32,6 @@ jobs:
             tag_name="v${raw_tag}"
           fi
           echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
-
-  # macOS Jobs
   macos-arm64-cpu:
     name: macOS Apple Silicon (arm64) CPU
     needs: release-metadata
@@ -134,8 +132,6 @@ jobs:
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz
           if-no-files-found: error
           retention-days: 30
-
-  # Ubuntu Jobs
   ubuntu-x64-cpu:
     name: Ubuntu x64 (CPU)
     needs: release-metadata
@@ -457,8 +453,6 @@ jobs:
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz
           if-no-files-found: error
           retention-days: 30
-
-  # Android Job
   android-arm64-cpu:
     name: Android arm64 (CPU)
     needs: release-metadata
@@ -516,8 +510,6 @@ jobs:
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz
           if-no-files-found: error
           retention-days: 30
-
-  # Windows Jobs
   windows-x64-cpu:
     name: Windows x64 (CPU)
     needs: release-metadata

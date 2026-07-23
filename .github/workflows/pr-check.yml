@@ -2,7 +2,7 @@ name: PR Comment Checks
 
 on:
   issue_comment:
-    types: [created, edited]
+    types: [created]
 
 permissions:
   contents: read
@@ -13,41 +13,38 @@ permissions:
 jobs:
   check-trigger:
     runs-on: ubuntu-latest
-    if: |
-      github.event.issue.pull_request &&
-      contains(github.event.comment.body, '/run-checks') &&
-      (
-        github.event.comment.author_association == 'OWNER' ||
-        github.event.comment.author_association == 'MEMBER'
-      )
+    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/run-checks') && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') }}
     outputs:
-      pr_number: ${{ github.event.issue.number }}
+      pr_number: ${{ steps.pr-data.outputs.pr_number }}
+      comment_id: ${{ steps.pr-data.outputs.comment_id }}
     steps:
-      - name: Add reaction to comment
-        uses: actions/github-script@v7
-        with:
-          script: |
-            (async () => {
-              await github.rest.reactions.createForIssueComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: context.payload.comment.id,
-                content: 'rocket'
-              });
-            })();
+      - name: Extract PR and Comment Metadata
+        id: pr-data
+        run: |
+          echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          echo "comment_id=${{ github.event.comment.id }}" >> $GITHUB_OUTPUT
 
-      - name: Update comment with status
+      - name: Add rocket reaction
         uses: actions/github-script@v7
         with:
           script: |
-            (async () => {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: context.payload.comment.id,
-                body: `Running strict checks... (initiated by @${context.payload.comment.user.login})\n\nPlease wait for results...`
-              });
-            })();
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+
+      - name: Acknowledge in comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              body: `${context.payload.comment.body}\n\n> 🚀 **Strict PR checks triggered by @${context.payload.comment.user.login}...** Running analysis and build steps.`
+            });
 
   strict-cpp-checks:
     runs-on: ubuntu-latest
@@ -56,30 +53,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/merge
+          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
 
       - name: Install C++ tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-format clang-tidy cppcheck build-essential cmake g++ clang
+          sudo apt-get install -y clang-format clang-tidy cppcheck build-essential g++ clang
 
-      - name: Run clang-format check (strict)
-        id: clang-format
+      - name: Clang-Format Check
         run: |
-          echo "### Clang Format Check" >> $GITHUB_STEP_SUMMARY
           find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) | grep -v /build/ > cpp_files.txt || true
           if [ -s cpp_files.txt ]; then
-            clang-format --dry-run -Werror $(cat cpp_files.txt) 2>&1 | tee format_output.txt || true
-            if [ -s format_output.txt ]; then
-              echo "Format violations found" >> $GITHUB_STEP_SUMMARY
-              cat format_output.txt >> $GITHUB_STEP_SUMMARY
-              exit 1
-            else
-              echo "C++ formatting is correct" >> $GITHUB_STEP_SUMMARY
-            fi
-          else
-            echo "No C++ files found" >> $GITHUB_STEP_SUMMARY
+            clang-format --dry-run -Werror $(cat cpp_files.txt)
           fi
+
+      - name: CppCheck Analysis
+        run: |
+          cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem --suppress=unusedFunction --std=c++17 .
+
+      - name: Clang-Tidy Analysis
+        run: |
+          find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) | grep -v /build/ | while read file; do
+            clang-tidy "$file" -checks="*,-fuchsia-*,-google-*,-llvm-*,-readability-magic-numbers" -- -I. -Iinclude || exit 1
+          done
 
   strict-python-checks:
     runs-on: ubuntu-latest
@@ -88,13 +84,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/merge
+          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+
+      - name: Install Python Linters
+        run: |
+          python -m pip install --upgrade pip
+          pip install black isort flake8 pylint bandit
+
+      - name: Black Formatting
+        run: black --check .
+
+      - name: Isort Import Check
+        run: isort --check-only .
+
+      - name: Flake8 Syntax & Code Quality
+        run: flake8 . --max-line-length=127 --select=E9,F63,F7,F82
+
+      - name: Bandit Security Scan
+        run: bandit -r . -ll
 
   build-test:
     runs-on: ubuntu-latest
@@ -103,12 +115,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/merge
+          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
 
-      - name: Install C++ dependencies
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build C++ Inference Executable
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake build-essential g++ clang
+          if [ -f "main.cpp" ]; then
+            g++ -std=c++17 -O3 -fopenmp -I. -Iinclude -o llm.exe main.cpp
+          fi
+
+      - name: Run Python Pytest Suite
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov
+          if [ -f "requirements.txt" ]; then pip install -r requirements.txt || true; fi
+          if [ -d "tests" ] || [ -d "test" ]; then pytest; fi
 
   summary:
     runs-on: ubuntu-latest
@@ -121,27 +146,25 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            (async () => {
-              const cpp_status = '${{ needs.strict-cpp-checks.result }}' === 'success' ? '✅' : '❌ ISSUES FOUND';
-              const python_status = '${{ needs.strict-python-checks.result }}' === 'success' ? '✅' : '❌ ISSUES FOUND';
-              const build_status = '${{ needs.build-test.result }}' === 'success' ? '✅' : '❌ ISSUES FOUND';
-              const overall = (cpp_status === '✅' && python_status === '✅' && build_status === '✅') ? 'PASSED' : 'REVIEW REQUIRED';
+            const cpp_status = '${{ needs.strict-cpp-checks.result }}' === 'success' ? '✅ Passed' : '❌ Failed';
+            const python_status = '${{ needs.strict-python-checks.result }}' === 'success' ? '✅ Passed' : '❌ Failed';
+            const build_status = '${{ needs.build-test.result }}' === 'success' ? '✅ Passed' : '❌ Failed';
+            const overall = (cpp_status.includes('✅') && python_status.includes('✅') && build_status.includes('✅')) 
+              ? '✅ **ALL CHECKS PASSED**' 
+              : '❌ **CHECK FAILURES DETECTED**';
 
-              const comment = `## Strict Check Results
+            const comment = `## 📋 Maintainer Check Results\n\n` +
+              `| Check Category | Status |\n` +
+              `| :--- | :--- |\n` +
+              `| **C++ Strict Quality** | ${cpp_status} |\n` +
+              `| **Python Strict Quality** | ${python_status} |\n` +
+              `| **Build & Tests** | ${build_status} |\n\n` +
+              `**Overall Result**: ${overall}\n\n` +
+              `[View Full Execution Logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
 
-            C++ Checks: ${cpp_status}
-            Python Checks: ${python_status}
-            Build & Tests: ${build_status}
-
-            Overall Status: ${overall}
-
-            See full run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${process.env.GITHUB_RUN_ID}
-            `;
-
-              await github.rest.issues.createComment({
-                issue_number: Number(process.env.PR_NUMBER),
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: comment
-              });
-            })();
+            await github.rest.issues.createComment({
+              issue_number: Number(process.env.PR_NUMBER),
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

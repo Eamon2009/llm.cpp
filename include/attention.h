@@ -4,11 +4,12 @@
 //  Mirrors: class Head and class MultiHeadAttention in Python
 // ============================================================
 
-#include "tensor.h"
-#include "linear.h"
 #include "config/config.h"
-#include <vector>
+#include "linear.h"
+#include "tensor.h"
+
 #include <fstream>
+#include <vector>
 
 // ------------------------------------------------------------------
 // Single causal attention head
@@ -16,17 +17,17 @@
 struct Head
 {
       int head_size;
-      Linear key, query, value; // each [n_embd → head_size], no bias
+      Linear key, query, value; // each [n_embd head_size], no bias
 
       Head() = default;
 
       Head(int n_embd, int hs, std::mt19937 &rng)
-          : head_size(hs),
-            key(n_embd, hs, false, rng),
-            query(n_embd, hs, false, rng),
-            value(n_embd, hs, false, rng) {}
+            : head_size(hs), key(n_embd, hs, false, rng), query(n_embd, hs, false, rng),
+              value(n_embd, hs, false, rng)
+      {
+      }
 
-      // x: [B, T, n_embd]  →  [B, T, head_size]
+      // x: [B, T, n_embd]   [B, T, head_size]
       Tensor forward(const Tensor &x, bool training, std::mt19937 &rng) const
       {
             int B = x.shape[0], T = x.shape[1];
@@ -40,7 +41,7 @@ struct Head
             Tensor kt = transpose23(k); // [B, hs, T]
             Tensor wei = bmm(q, kt);    // [B, T, T]
 
-            // mask upper triangle → -inf
+            // mask upper triangle -inf
             for (int b = 0; b < B; ++b)
                   for (int i = 0; i < T; ++i)
                         for (int j = i + 1; j < T; ++j)
@@ -53,7 +54,7 @@ struct Head
             // dropout on attention weights
             wei = dropout(wei, DROPOUT, training, rng);
 
-            // wei @ v  →  [B, T, hs]
+            // wei @ v   [B, T, hs]
             return bmm(wei, v);
       }
 
@@ -75,7 +76,7 @@ struct Head
             value.load(f);
       }
 
-private:
+    private:
       static Tensor scale3d_inplace(Tensor t, float s)
       {
             for (auto &v : t.data)
@@ -94,14 +95,13 @@ struct MultiHeadAttention
       MultiHeadAttention() = default;
 
       MultiHeadAttention(int n_embd_, int num_h, int hs, std::mt19937 &rng)
-          : num_heads(num_h), head_size(hs), n_embd(n_embd_),
-            proj(num_h * hs, n_embd_, true, rng)
+            : num_heads(num_h), head_size(hs), n_embd(n_embd_), proj(num_h * hs, n_embd_, true, rng)
       {
             for (int i = 0; i < num_h; ++i)
                   heads.emplace_back(n_embd_, hs, rng);
       }
 
-      // x: [B, T, n_embd]  →  [B, T, n_embd]
+      // x: [B, T, n_embd] to  [B, T, n_embd]
       Tensor forward(const Tensor &x, bool training, std::mt19937 &rng) const
       {
             std::vector<Tensor> head_outs;

@@ -1,18 +1,18 @@
-.PHONY: all release debug benchmark-bin clean-native format help
+.PHONY: all build clean run dev gpu train bench logs ps shell help release debug benchmark-bin clean-native format
 
-SHELL  := /bin/bash
+SHELL := /bin/bash
+SCRIPT := ./scripts/build.sh
 CC     := g++
-CFLAGS := -std=c++17 -O3 -march=native
+CFLAGS := -std=c++17 -O3 -march=native -fopenmp
 IFLAGS := -I. -Iinclude
 TARGET := llm
-SRCS   := main.cpp
+SRCS   := llm.cpp
 HDRS   := $(wildcard include/*.h)
 
 all: $(TARGET)
-
 $(TARGET): $(SRCS) $(HDRS)
 	$(CC) $(CFLAGS) $(IFLAGS) -o $@ $(SRCS)
-	@echo "Built $(TARGET)"
+	@echo "Built $(TARGET) with OpenMP parallel support."
 
 release: $(SRCS) $(HDRS)
 	$(CC) $(CFLAGS) $(IFLAGS) -DNDEBUG -o $(TARGET) $(SRCS)
@@ -26,6 +26,39 @@ benchmark-bin: benchmark.cpp $(HDRS)
 clean-native:
 	rm -f $(TARGET) $(TARGET)-debug llm-bench
 
+build:
+	$(SCRIPT) up
+
+run: build
+	@echo "Stack already started."
+
+dev:
+	$(SCRIPT) dev
+
+gpu:
+	$(SCRIPT) gpu
+
+train-cpp:
+	$(SCRIPT) train-cpp
+
+train-torch:
+	$(SCRIPT) train-torch
+
+bench:
+	$(SCRIPT) bench
+
+logs:
+	$(SCRIPT) logs
+
+ps:
+	$(SCRIPT) ps
+
+shell:
+	$(SCRIPT) shell $(SERVICE)
+
+clean:
+	$(SCRIPT) clean
+
 format:
 	find . \( -name "*.cpp" -o -name "*.h" \) \
 	  ! -path "./build/*" \
@@ -33,12 +66,12 @@ format:
 
 help:
 	@echo ""
-	@echo "  llm.cpp — native make targets"
+	@echo "  llm.cpp — make targets"
 	@echo ""
-	@echo "    make              Build C++ binary (native)"
+	@echo "  Native:"
+	@echo "    make              Build C++ binary with OpenMP parallel support"
 	@echo "    make release      Stripped release binary"
 	@echo "    make debug        Debug binary with ASan/UBSan"
-	@echo "    make benchmark-bin Build benchmark binary"
 	@echo "    make clean-native Remove native build artifacts"
 	@echo "    make format       Run clang-format on all C++ files"
 	@echo ""
