@@ -1,7 +1,8 @@
 #include "config/config.h"
 #include "include/backward.h"
-#include "include/dataloader.h"
-#include "include/gpt.h"
+#include "include/lm.h"
+#include "include/sampler.h"
+#include "include/tokenizer.h"
 
 #include <algorithm>
 #include <chrono>
@@ -11,18 +12,30 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-// Signal handler (Ctrl-C stops generation gracefully)
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#include <unistd.h>
+#elif defined(__linux__)
+#include <unistd.h>
+#endif
+
 static volatile bool g_interrupted = false;
 static void sig_handler(int)
 {
       g_interrupted = true;
 }
 
-// Timing helpers
+// Return the current wall-clock time as a formatted string.
 static std::string now_str()
 {
       std::time_t t = std::time(nullptr);
@@ -31,18 +44,80 @@ static std::string now_str()
       return buf;
 }
 
+// Return elapsed seconds since an arbitrary epoch using a monotonic clock.
 static double wall_secs()
 {
       using namespace std::chrono;
       return duration<double>(steady_clock::now().time_since_epoch()).count();
 }
 
+// Helper function to fetch Hardware Specs safely across platforms
+static std::string get_cpu_info()
+{
+#if defined(__linux__)
+      std::ifstream cpuinfo("/proc/cpuinfo");
+      std::string line;
+      while (std::getline(cpuinfo, line))
+      {
+            if (line.find("model name") != std::string::npos)
+            {
+                  size_t colon = line.find(':');
+                  if (colon != std::string::npos)
+                  {
+                        std::string name = line.substr(colon + 2);
+                        if (name.length() > 34)
+                              return name.substr(0, 31) + "...";
+                        return name;
+                  }
+            }
+      }
+      return "Generic Linux CPU";
+#elif defined(__APPLE__)
+      char buffer[128];
+      size_t bufferlen = sizeof(buffer);
+      if (sysctlbyname("machdep.cpu.brand_string", &buffer, &bufferlen, NULL, 0) == 0)
+      {
+            std::string name(buffer);
+            if (name.length() > 34)
+                  return name.substr(0, 31) + "...";
+            return name;
+      }
+      return "Apple Silicon / Mac CPU";
+#elif defined(_WIN32)
+      HKEY hKey;
+      if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+                        "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                        0,
+                        KEY_READ,
+                        &hKey) == ERROR_SUCCESS)
+      {
+            char name[128];
+            DWORD size = sizeof(name);
+            if (RegQueryValueExA(hKey, "ProcessorNameString", NULL, NULL, (LPBYTE)name, &size) ==
+                ERROR_SUCCESS)
+            {
+                  RegCloseKey(hKey);
+                  std::string cpu_name(name);
+                  if (cpu_name.length() > 34)
+                        return cpu_name.substr(0, 31) + "...";
+                  return cpu_name;
+            }
+            RegCloseKey(hKey);
+      }
+      return "Generic Windows CPU";
+#else
+      return "Generic CPU Host";
+#endif
+}
+
+// Return true if the file at path exists and can be opened.
 static bool file_exists(const std::string &path)
 {
       std::ifstream f(path.c_str(), std::ios::binary);
       return f.good();
 }
 
+// Return the directory portion of a file path, or "." for bare filenames.
 static std::string dir_name(const std::string &path)
 {
       std::string::size_type pos = path.find_last_of("/\\");
@@ -53,6 +128,7 @@ static std::string dir_name(const std::string &path)
       return path.substr(0, pos);
 }
 
+// Return true if path starts with a drive letter or a slash.
 static bool is_absolute_path(const std::string &path)
 {
       if (path.empty())
@@ -62,6 +138,7 @@ static bool is_absolute_path(const std::string &path)
       return path[0] == '/' || path[0] == '\\';
 }
 
+// Join base directory and child path with a separator.
 static std::string join_path(const std::string &base, const std::string &child)
 {
       if (base.empty() || base == ".")
@@ -72,6 +149,8 @@ static std::string join_path(const std::string &base, const std::string &child)
       return base + "/" + child;
 }
 
+// Try the requested path first, then look next to the executable.
+// Return whichever path exists, or the requested path if neither does.
 static std::string choose_existing_path(const std::string &requested_path, const std::string &argv0)
 {
       if (requested_path.empty())
@@ -93,6 +172,8 @@ static std::string choose_existing_path(const std::string &requested_path, const
       return requested_path;
 }
 
+// Choose a writable output path, preferring one next to the executable
+// only when the current directory copy does not already exist.
 static std::string choose_output_path(const std::string &requested_path, const std::string &argv0)
 {
       if (requested_path.empty() || is_absolute_path(requested_path))
@@ -104,13 +185,31 @@ static std::string choose_output_path(const std::string &requested_path, const s
       return exe_relative;
 }
 
-// sample N tokens from the model and print them
-static void sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens)
+// Print a one-line usage summary listing all supported flags.
+static void print_usage(const char *argv0)
+{
+      std::cout << "Usage: " << argv0 << " [options] [data_file]\n"
+                << "\n"
+                << "  --generate              run inference only (needs saved weights)\n"
+                << "  --chat                  start interactive chat mode\n"
+                << "  --chat-tokens N         max tokens per chat reply (default "
+                << DEFAULT_CHAT_TOKENS << ")\n"
+                << "  --system TEXT           system prompt prepended to every chat turn\n"
+                << "  --rep-penalty F         repetition penalty, 1.0 means off (default "
+                << DEFAULT_REP_PENALTY << ")\n"
+                << "  --rep-window N          recent token window for penalty (default "
+                << DEFAULT_REP_WINDOW << ")\n"
+                << "  --help                  show this message\n";
+}
+
+// Sample n_tokens from the model using the given sampler params and print them.
+static void
+sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens, const SamplerParams &params)
 {
       std::vector<int> ctx = {0};
       for (int i = 0; i < n_tokens; ++i)
       {
-            ctx = model.generate(ctx, 1);
+            ctx = model.generate(ctx, 1, params);
             std::cout << dl.decode({ctx.back()}) << std::flush;
             if ((int)ctx.size() > BLOCK_SIZE)
                   ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
@@ -118,7 +217,8 @@ static void sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens)
       std::cout << "\n";
 }
 
-// estimate loss — no gradients, training=false
+// Estimate average cross-entropy loss over EVAL_ITERS random batches.
+// No gradients are computed and training mode is disabled.
 static float
 estimate_loss(GPTLanguageModel &model, DataLoader &dl, const std::string &split, std::mt19937 &rng)
 {
@@ -134,18 +234,55 @@ estimate_loss(GPTLanguageModel &model, DataLoader &dl, const std::string &split,
       return total / EVAL_ITERS;
 }
 
-// Chat window
-static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens)
+// Build the initial context for a chat turn.
+// Places system tokens first (if any), then appends user tokens.
+// Crops the combined context to BLOCK_SIZE from the right.
+static std::vector<int> build_turn_context(const std::vector<int> &sys_tokens,
+                                           const std::vector<int> &user_tokens)
 {
+      std::vector<int> ctx;
+      ctx.reserve(sys_tokens.size() + user_tokens.size());
+      ctx.insert(ctx.end(), sys_tokens.begin(), sys_tokens.end());
+      ctx.insert(ctx.end(), user_tokens.begin(), user_tokens.end());
+
+      if ((int)ctx.size() > BLOCK_SIZE)
+            ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
+
+      return ctx;
+}
+
+// Run an interactive chat loop.
+// The system prompt is encoded once and prepended to the context on every turn.
+// Repetition penalty is applied during generation using params.
+static void
+run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens, const SamplerParams &params)
+{
+      std::vector<int> sys_tokens;
+      if (!params.system_prompt.empty())
+      {
+            sys_tokens = dl.encode(params.system_prompt);
+            if (sys_tokens.empty())
+            {
+                  std::cerr << "[WARN]  System prompt produced zero tokens. "
+                               "All characters may be outside the training vocabulary.\n";
+            }
+            else
+            {
+                  std::cout << "[CHAT]  System prompt active (" << sys_tokens.size() << " tokens, "
+                            << BLOCK_SIZE - (int)sys_tokens.size()
+                            << " tokens left for user input)\n";
+            }
+      }
+
       std::cout << "\n" << std::string(60, '=') << "\n";
-      std::cout << "  llm.cpp CHAT MODE\n";
-      std::cout << "  Type your prompt and press Enter. "
-                   "Type 'quit' or 'exit' to leave.\n";
+      std::cout << "  CHAT MODE\n";
+      std::cout << "  Type your prompt and press Enter.\n";
+      std::cout << "  Type quit or exit to leave.\n";
       std::cout << std::string(60, '=') << "\n\n";
 
       while (!g_interrupted)
       {
-            std::cout << "\033[1;32muser>\033[0m ";
+            std::cout << "\033[1;32mroot>\033[0m ";
             std::cout.flush();
 
             std::string prompt;
@@ -164,21 +301,18 @@ static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens
                   break;
             }
 
-            std::vector<int> ctx = dl.encode(prompt);
-            if (ctx.empty())
-            {
-                  ctx = {0};
-            }
+            std::vector<int> user_tokens = dl.encode(prompt);
+            if (user_tokens.empty())
+                  user_tokens = {0};
 
-            if ((int)ctx.size() > BLOCK_SIZE)
-                  ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
+            std::vector<int> ctx = build_turn_context(sys_tokens, user_tokens);
 
             std::cout << "\033[1;36mllm>\033[0m ";
             std::cout.flush();
 
             for (int tok = 0; tok < max_new_tokens && !g_interrupted; ++tok)
             {
-                  ctx = model.generate(ctx, 1);
+                  ctx = model.generate(ctx, 1, params);
                   std::cout << dl.decode({ctx.back()}) << std::flush;
 
                   if ((int)ctx.size() > BLOCK_SIZE)
@@ -188,45 +322,77 @@ static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens
       }
 }
 
-// Main
+// Entry point: parse flags, load data, build model, then train or run inference.
 int main(int argc, char *argv[])
 {
       std::signal(SIGINT, sig_handler);
 
-      // Banner
       std::cout << "llm.cpp\n";
 
       std::string data_path = DEFAULT_CLEANED_PATH;
-      const char *env_data_path = std::getenv(DATA_PATH_ENV_VAR.c_str());
-      if (env_data_path != nullptr && env_data_path[0] != '\0')
-            data_path = env_data_path;
-
       std::string model_path = BEST_MODEL_PATH;
-      const char *env_model_path = std::getenv(MODEL_PATH_ENV_VAR.c_str());
-      if (env_model_path != nullptr && env_model_path[0] != '\0')
-            model_path = env_model_path;
+
+      const char *env_data = std::getenv(DATA_PATH_ENV_VAR.c_str());
+      const char *env_model = std::getenv(MODEL_PATH_ENV_VAR.c_str());
+      if (env_data != nullptr && env_data[0] != '\0')
+            data_path = env_data;
+      if (env_model != nullptr && env_model[0] != '\0')
+            model_path = env_model;
 
       bool gen_mode = false;
       bool chat_mode = false;
-      int chat_tokens = 200;
+      int chat_tokens = DEFAULT_CHAT_TOKENS;
+      float rep_penalty = DEFAULT_REP_PENALTY;
+      int rep_window = DEFAULT_REP_WINDOW;
+      std::string system_prompt;
 
       for (int i = 1; i < argc; ++i)
       {
             std::string a = argv[i];
-            if (a == "--generate")
+
+            if (a == "--help")
+            {
+                  print_usage(argv[0]);
+                  return 0;
+            }
+            else if (a == "--generate")
+            {
                   gen_mode = true;
+            }
             else if (a == "--chat")
+            {
                   chat_mode = true;
+            }
             else if (a == "--chat-tokens" && i + 1 < argc)
+            {
                   chat_tokens = std::atoi(argv[++i]);
+            }
+            else if (a == "--system" && i + 1 < argc)
+            {
+                  system_prompt = argv[++i];
+            }
+            else if (a == "--rep-penalty" && i + 1 < argc)
+            {
+                  rep_penalty = (float)std::atof(argv[++i]);
+            }
+            else if (a == "--rep-window" && i + 1 < argc)
+            {
+                  rep_window = std::atoi(argv[++i]);
+            }
             else
+            {
                   data_path = a;
+            }
       }
 
       data_path = choose_existing_path(data_path, argv[0]);
       model_path = choose_output_path(model_path, argv[0]);
 
-      //  Data
+      SamplerParams sampler;
+      sampler.rep_penalty = rep_penalty;
+      sampler.rep_window = rep_window;
+      sampler.system_prompt = system_prompt;
+
       DataLoader dl;
       try
       {
@@ -240,17 +406,45 @@ int main(int argc, char *argv[])
                       << ".\n";
             return 1;
       }
+
       GPTLanguageModel model(dl.vocab_size, N_EMBD, N_HEAD, N_LAYER, BLOCK_SIZE, SEED);
 
       long n_params = model.num_params();
-      std::cout << "max_seq_len: " << BLOCK_SIZE << "\n";
-      std::cout << "vocab_size: " << dl.vocab_size << "\n";
-      std::cout << "num_layers: " << N_LAYER << "\n";
-      std::cout << "num_heads: " << N_HEAD << "\n";
-      std::cout << "channels: " << N_EMBD << "\n";
-      std::cout << "num_parameters: " << n_params << "\n";
+      std::string cpu_spec = get_cpu_info();
 
-      // chat mode
+      // Formatted nvidia-smi style system output with CPU Specs
+      std::cout
+            << "+-----------------------------------------------------------------------------+\n";
+      std::cout
+            << "| LLM.cpp                                                                     |\n";
+      std::cout
+            << "|======================================+======================================|\n";
+      std::cout
+            << "| Parameter / Spec                     | Value                                |\n";
+      std::cout
+            << "|--------------------------------------+--------------------------------------|\n";
+      std::cout << "| Host CPU Device                      | " << std::left << std::setw(36)
+                << cpu_spec << " |\n";
+      std::cout << "| Max Sequence Length                  | " << std::left << std::setw(36)
+                << BLOCK_SIZE << " |\n";
+      std::cout << "| Vocab Size (BPE Merges)              | " << std::left << std::setw(36)
+                << dl.vocab_size << " |\n";
+      std::cout << "| Number of Layers                     | " << std::left << std::setw(36)
+                << N_LAYER << " |\n";
+      std::cout << "| Number of Heads                      | " << std::left << std::setw(36)
+                << N_HEAD << " |\n";
+      std::cout << "| Channels (Embeddings)                | " << std::left << std::setw(36)
+                << N_EMBD << " |\n";
+      std::cout << "| Number of Parameters                 | " << std::left << std::setw(36)
+                << n_params << " |\n";
+      std::cout << "| Repetition Penalty                   | " << std::left << std::setw(36)
+                << rep_penalty << " |\n";
+      std::cout << "| Repetition Window                    | " << std::left << std::setw(36)
+                << rep_window << " |\n";
+      std::cout
+            << "+--------------------------------------+--------------------------------------+\n";
+      std::cout << std::right; // Reset formatting stream state
+
       if (chat_mode)
       {
             if (!file_exists(model_path))
@@ -263,14 +457,16 @@ int main(int argc, char *argv[])
             }
 
             model.load(model_path);
-            std::cout << "weights: " << model_path << "\n";
+            std::cout << "weights:    " << model_path << "\n";
             std::cout << "max_tokens: " << chat_tokens << "\n";
 
-            run_chat(model, dl, chat_tokens);
+            if (!sampler.system_prompt.empty())
+                  std::cout << "system:     " << sampler.system_prompt << "\n";
+
+            run_chat(model, dl, chat_tokens, sampler);
             return 0;
       }
 
-      // Generate-only mode
       if (gen_mode)
       {
             if (!file_exists(model_path))
@@ -287,7 +483,7 @@ int main(int argc, char *argv[])
             std::vector<int> ctx = {0};
             while (!g_interrupted)
             {
-                  ctx = model.generate(ctx, 1);
+                  ctx = model.generate(ctx, 1, sampler);
                   std::cout << dl.decode({ctx.back()}) << std::flush;
                   if ((int)ctx.size() > BLOCK_SIZE)
                         ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
@@ -296,19 +492,13 @@ int main(int argc, char *argv[])
             return 0;
       }
 
-      // optimizer
+      // Training mode: build optimizer, then iterate.
       AdamWState opt = build_optimizer(model, LEARNING_RATE);
-
-      // Separate RNG for batch sampling
       std::mt19937 rng(SEED);
-
-      // training loop
 
       float best_val_loss = 1e30f;
       float last_val_loss = 0.0f;
-      double train_start = wall_secs();
 
-      // compute initial val loss before training
       {
             std::mt19937 init_rng(SEED);
             last_val_loss = estimate_loss(model, dl, "val", init_rng);
@@ -318,16 +508,11 @@ int main(int argc, char *argv[])
       {
             double step_start = wall_secs();
 
-            // train step
             std::pair<std::vector<int>, std::vector<int>> batch =
                   dl.get_batch("train", BATCH_SIZE, BLOCK_SIZE, rng);
 
-            SavedForward saved = forward_save(model,
-                                              batch.first,
-                                              BATCH_SIZE,
-                                              BLOCK_SIZE,
-                                              batch.second,
-                                              /*training=*/true);
+            SavedForward saved =
+                  forward_save(model, batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, true);
 
             float batch_loss =
                   model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false).second;
@@ -339,7 +524,6 @@ int main(int argc, char *argv[])
             int tok_per_sec =
                   (step_ms > 0.0) ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0)) : 0;
 
-            // every EVAL_INTERVAL steps: compute val, save if best, sample
             bool better = false;
             if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
             {
@@ -352,20 +536,17 @@ int main(int argc, char *argv[])
                   }
             }
 
-            // print every step
             std::cout << "step" << std::setw(5) << iter << "/" << MAX_ITERS << " | loss "
-                      << std::fixed << std::setprecision(6) << batch_loss << " | val " << std::fixed
-                      << std::setprecision(6) << last_val_loss << " | lr " << std::scientific
-                      << std::setprecision(2) << (float)LEARNING_RATE << " | " << std::fixed
-                      << std::setprecision(2) << step_ms << " ms"
-                      << " | " << tok_per_sec << " tok/s" << (better ? "  *best*" : "") << "\n";
+                      << std::fixed << std::setprecision(6) << batch_loss << " | lr "
+                      << std::scientific << std::setprecision(2) << (float)LEARNING_RATE << " | "
+                      << std::fixed << std::setprecision(2) << step_ms << " ms"
+                      << " | " << tok_per_sec << " tok/s" << (better ? "  best" : "") << "\n";
             std::cout.flush();
 
-            // sample after every eval window
             if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
             {
                   std::cout << "generating:\n";
-                  sample_tokens(model, dl, iter == MAX_ITERS ? 10000 : 150);
+                  sample_tokens(model, dl, iter == MAX_ITERS ? 10000 : 150, sampler);
             }
       }
 
