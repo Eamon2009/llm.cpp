@@ -67,6 +67,46 @@ python data_set.py  # also get any dataset from hugging face datasets
 g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
 ./llm.exe data/input.txt
 ```
+should see something like this 
+```text
+llm.cpp
+[BPE]   Text length: 31456820 characters
+[BPE]   Target vocab size: 2048
+[BPE]   Running 1944 merges...
+[BPE]   step 100/1944   vocab=204
+...
+[BPE]   Done. Final vocab size: 2048
+[DATA]  Total tokens : 9950307
+[DATA]  Train tokens : 8955276
+[DATA]  Val tokens   : 995031
++-----------------------------------------------------------------------------+
+| LLM.cpp                                                                     |
+|======================================+======================================|
+| Parameter / Spec                     | Value                                |
+|--------------------------------------+--------------------------------------|
+| Host CPU Device                      | AMD Ryzen 5 PRO 3500U w/ Radeon...   |
+| Max Sequence Length                  | 64                                   |
+| Vocab Size (BPE Merges)              | 2048                                 |
+| Number of Layers                     | 4                                    |
+| Number of Heads                      | 2                                    |
+| Channels (Embeddings)                | 128                                  |
+| Number of Parameters                 | 1326336                              |
+| Repetition Penalty                   | 10                                   |
+| Repetition Window                    | 10                                   |
++--------------------------------------+--------------------------------------+
+step    1/5000 | loss 7.662571 | lr 5.00e-04 | 5456.40 ms | 375 tok/s
+step    2/5000 | loss 7.580595 | lr 5.00e-04 | 4994.96 ms | 410 tok/s
+step    3/5000 | loss 7.540967 | lr 5.00e-04 | 4747.15 ms | 431 tok/s
+step    4/5000 | loss 7.503835 | lr 5.00e-04 | 4489.64 ms | 456 tok/s
+step    5/5000 | loss 7.464558 | lr 5.00e-04 | 4701.70 ms | 435 tok/s
+step    6/5000 | loss 7.422751 | lr 5.00e-04 | 4645.18 ms | 440 tok/s
+step    7/5000 | loss 7.387443 | lr 5.00e-04 | 4677.04 ms | 437 tok/s
+step    8/5000 | loss 7.343823 | lr 5.00e-04 | 4753.86 ms | 430 tok/s
+step    9/5000 | loss 7.327121 | lr 5.00e-04 | 4874.67 ms | 420 tok/s
+step   10/5000 | loss 7.279384 | lr 5.00e-04 | 4939.59 ms | 414 tok/s
+step   11/5000 | loss 7.264264 | lr 5.00e-04 | 4968.59 ms | 412 tok/s
+...
+```
 
 This trains from scratch on `data/input.txt` and writes the best checkpoint to `best_model.bin`. Once you have a checkpoint, generate or chat with it:
 
