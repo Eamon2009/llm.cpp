@@ -41,7 +41,7 @@ which transfers all parameters to GPU memory; all subsequent `torch::matmul` cal
 ---
 
 <h1 align="center">
-<img width="824" height="249" alt="image" src="https://github.com/user-attachments/assets/5c65daa2-903a-4392-85e3-56442bb82cac" />
+<img width="824" height="247" alt="image" src="https://github.com/user-attachments/assets/5c65daa2-903a-4392-85e3-56442bb82cac" />
 
 
 </h1>
