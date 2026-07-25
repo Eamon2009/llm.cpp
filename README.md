@@ -2,9 +2,6 @@
 
 <h1 align="center">
 <img width"2170" height="725" alt="image" src="https://github.com/user-attachments/assets/1049c431-2ec8-4f24-b685-68f2d69adf33" />
-<img width="824" height="247" alt="image" src="https://github.com/user-attachments/assets/5c65daa2-903a-4392-85e3-56442bb82cac" />
-
-
 
 </h1>
 
@@ -38,6 +35,8 @@ the model to GPU:
 ```cpp
 model->to(torch::kCUDA)
 ```
+<img width="824" height="218" alt="image" src="https://github.com/user-attachments/assets/073d1c14-f44e-413b-9f0f-ae35be81d1ed" />
+
 which transfers all parameters to GPU memory; all subsequent `torch::matmul` calls dispatch to cuBLAS automatically.
 ***technical notes***: [docs](https://eamon2009.github.io/LLMs/)
 
