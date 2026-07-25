@@ -139,10 +139,59 @@ cd distributed
 torchrun --standalone --nproc_per_node=4 train.py
 ```
 ---
+## Hardware Support
+
+Optimized for any hardware — from your laptop CPU to a datacenter cluster.
+
+### Apple Silicon
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/hardware/apple_silicon.jpg" width="160"/><br/><b>Apple Silicon</b><br/>M1–M4 · Metal</td>
+    <td align="center"><img src="assets/hardware/m_pro.png" width="160"/><br/><b>M Pro</b><br/>19-core GPU · Metal</td>
+    <td align="center"><img src="assets/hardware/m_max.png" width="160"/><br/><b>M Max</b><br/>40-core GPU · Metal</td>
+    <td align="center"><img src="assets/hardware/m_ultra.jpg" width="160"/><br/><b>M Ultra</b><br/>76-core GPU · Metal</td>
+  </tr>
+</table>
+
+### NVIDIA — Datacenter
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/hardware/h100.jpg" width="160"/><br/><b>H100</b><br/>SXM5 · NVLink · 80 GB HBM3</td>
+    <td align="center"><img src="assets/hardware/a100.png" width="160"/><br/><b>A100</b><br/>SXM4 · 80 GB HBM2e</td>
+    <td align="center"><img src="assets/hardware/b200.jpg" width="160"/><br/><b>B200</b><br/>Blackwell · 192 GB HBM3e</td>
+    <td align="center"><img src="assets/hardware/t4.png" width="160"/><br/><b>T4</b><br/>CUDA · Cloud · Colab</td>
+  </tr>
+</table>
+
+### NVIDIA — Consumer & Edge
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/hardware/rtx5090.jpg" width="160"/><br/><b>RTX 5090</b><br/>CUDA · 32 GB GDDR7</td>
+    <td align="center"><img src="assets/hardware/rtx4090.jpg" width="160"/><br/><b>RTX 4090</b><br/>CUDA · 24 GB GDDR6X</td>
+    <td align="center"><img src="assets/hardware/jetson.jpg" width="160"/><br/><b>Jetson Orin</b><br/>NVIDIA · Edge AI</td>
+    <td align="center"><img src="assets/hardware/dgx_spark.jpg" width="160"/><br/><b>DGX Spark</b><br/>NVIDIA · GB10</td>
+  </tr>
+</table>
+
+### AMD & CPU
+
+<table>
+  <tr>
+    <td align="center"><img src="assets/hardware/radeon.jpg" width="160"/><br/><b>Radeon RX</b><br/>ROCm · RDNA3</td>
+    <td align="center"><img src="assets/hardware/mi300.jpg" width="160"/><br/><b>MI300X</b><br/>ROCm · 192 GB HBM3</td>
+    <td align="center"><img src="assets/hardware/cpu.jpg" width="160"/><br/><b>CPU (x86-64)</b><br/>OpenMP · AVX · Zero install</td>
+  </tr>
+</table>
+
+---
+
 ## File structure
 
 ```text
-## 📂 Project Structure
+## Structure
 
 ```text
 .
