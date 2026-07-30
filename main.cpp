@@ -1,3 +1,22 @@
+/*'''
+ * llm.cpp - LMGNU Organization
+ * Copyright (C) 2026 Eamon
+ * https://github.com/LMGNU/llm.cpp
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include "config/config.h"
 #include "include/backward.h"
 #include "include/lm.h"
@@ -21,8 +40,10 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#include <psapi.h> // K32GetProcessMemoryInfo ships in kernel32.dll, no extra .lib needed
 #include <windows.h>
 #elif defined(__APPLE__)
+#include <mach/mach.h>
 #include <sys/sysctl.h>
 #include <unistd.h>
 #elif defined(__linux__)
@@ -107,6 +128,78 @@ static std::string get_cpu_info()
       return "Generic Windows CPU";
 #else
       return "Generic CPU Host";
+#endif
+}
+
+// Return the total physical system RAM in megabytes.
+// Works on Windows, Linux, and macOS with no extra linker flags required.
+// Returns 0.0 if the platform-specific query fails.
+static double get_total_ram_mb()
+{
+#if defined(_WIN32)
+      MEMORYSTATUSEX status;
+      status.dwLength = sizeof(status);
+      if (GlobalMemoryStatusEx(&status))
+            return (double)status.ullTotalPhys / (1024.0 * 1024.0);
+      return 0.0;
+#elif defined(__APPLE__)
+      int64_t mem = 0;
+      size_t len = sizeof(mem);
+      if (sysctlbyname("hw.memsize", &mem, &len, NULL, 0) == 0)
+            return (double)mem / (1024.0 * 1024.0);
+      return 0.0;
+#elif defined(__linux__)
+      std::ifstream meminfo("/proc/meminfo");
+      std::string line;
+      while (std::getline(meminfo, line))
+      {
+            if (line.compare(0, 9, "MemTotal:") == 0)
+            {
+                  std::istringstream iss(line.substr(9));
+                  double kb = 0.0;
+                  iss >> kb;
+                  return kb / 1024.0;
+            }
+      }
+      return 0.0;
+#else
+      return 0.0;
+#endif
+}
+
+// Return the current process's resident memory usage in megabytes.
+// Works on Windows, Linux, and macOS with no extra linker flags required.
+// Returns 0.0 if the platform-specific query fails.
+static double get_ram_usage_mb()
+{
+#if defined(_WIN32)
+      PROCESS_MEMORY_COUNTERS pmc;
+      if (K32GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+            return (double)pmc.WorkingSetSize / (1024.0 * 1024.0);
+      return 0.0;
+#elif defined(__APPLE__)
+      mach_task_basic_info_data_t info;
+      mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+      if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &count) ==
+          KERN_SUCCESS)
+            return (double)info.resident_size / (1024.0 * 1024.0);
+      return 0.0;
+#elif defined(__linux__)
+      std::ifstream status("/proc/self/status");
+      std::string line;
+      while (std::getline(status, line))
+      {
+            if (line.compare(0, 6, "VmRSS:") == 0)
+            {
+                  std::istringstream iss(line.substr(6));
+                  double kb = 0.0;
+                  iss >> kb;
+                  return kb / 1024.0;
+            }
+      }
+      return 0.0;
+#else
+      return 0.0;
 #endif
 }
 
@@ -425,6 +518,8 @@ int main(int argc, char *argv[])
             << "|--------------------------------------+--------------------------------------|\n";
       std::cout << "| Host CPU Device                      | " << std::left << std::setw(36)
                 << cpu_spec << " |\n";
+      std::cout << "| Host RAM (Total)                     | " << std::left << std::setw(36)
+                << (std::to_string((long long)get_total_ram_mb()) + " MB") << " |\n";
       std::cout << "| Max Sequence Length                  | " << std::left << std::setw(36)
                 << BLOCK_SIZE << " |\n";
       std::cout << "| Vocab Size (BPE Merges)              | " << std::left << std::setw(36)
@@ -525,9 +620,11 @@ int main(int argc, char *argv[])
                   (step_ms > 0.0) ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0)) : 0;
 
             bool better = false;
+            bool val_updated = false;
             if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
             {
                   last_val_loss = estimate_loss(model, dl, "val", rng);
+                  val_updated = true;
                   if (last_val_loss < best_val_loss)
                   {
                         best_val_loss = last_val_loss;
@@ -536,11 +633,22 @@ int main(int argc, char *argv[])
                   }
             }
 
-            std::cout << "step" << std::setw(5) << iter << "/" << MAX_ITERS << " | loss "
-                      << std::fixed << std::setprecision(6) << batch_loss << " | lr "
-                      << std::scientific << std::setprecision(2) << (float)LEARNING_RATE << " | "
-                      << std::fixed << std::setprecision(2) << step_ms << " ms"
-                      << " | " << tok_per_sec << " tok/s" << (better ? "  best" : "") << "\n";
+            double ram_mb = get_ram_usage_mb();
+
+            // train loss is always the fresh loss from this step's forward pass.
+            // val loss is only recomputed every EVAL_INTERVAL steps (recomputing it
+            // every step would be wasteful) but the value shown is always the most
+            // recently and correctly measured one — never stale/fake data. A "*"
+            // marks the steps where it was just refreshed.
+            std::cout << "step " << std::right << std::setw(6) << iter << "/" << MAX_ITERS
+                      << " | train loss " << std::fixed << std::setprecision(6) << batch_loss
+                      << " | val loss " << std::fixed << std::setprecision(6) << last_val_loss
+                      << (val_updated ? "*" : " ") << " | lr " << std::scientific
+                      << std::setprecision(2) << (float)LEARNING_RATE << " | " << std::fixed
+                      << std::setprecision(2) << std::setw(8) << step_ms << " ms"
+                      << " | " << std::setw(6) << tok_per_sec << " tok/s"
+                      << " | ram " << std::setprecision(1) << ram_mb << " MB"
+                      << (better ? "  best" : "") << "\n";
             std::cout.flush();
 
             if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
