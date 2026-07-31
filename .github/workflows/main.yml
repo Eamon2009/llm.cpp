@@ -1,4 +1,4 @@
-name: Automated Admin Commit Notification
+name: Automated Commit Notification
 
 on:
   push:
@@ -10,25 +10,40 @@ permissions:
 jobs:
   notify-admin:
     runs-on: ubuntu-latest
-    
     environment:
       name: main
-      
+
     steps:
-    - name: Checkout Code with Full History
+    - name: Checkout Code with History
       uses: actions/checkout@v4
       with:
         fetch-depth: 2
 
-    - name: Generate Commit Message and Diff Data
+    - name: Extract Commit Details and Escape Diff for HTML
       id: git_details
       run: |
+        # Extract metadata
+        echo "COMMIT_HASH=$(git log -1 --pretty=format:'%h')" >> $GITHUB_ENV
         echo "COMMIT_MSG=$(git log -1 --pretty=format:'%s')" >> $GITHUB_ENV
-        echo "COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an')" >> $GITHUB_ENV
-        
-        echo "GIT_DIFF<<EOF" >> $GITHUB_ENV
-        git diff HEAD~1 HEAD | head -n 100 >> $GITHUB_ENV
-        echo "EOF" >> $GITHUB_ENV
+        echo "COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an <%ae>')" >> $GITHUB_ENV
+
+        # Safely extract diff with fallback if HEAD~1 doesn't exist
+        if git rev-parse HEAD~1 >/dev/null 2>&1; then
+          RAW_DIFF=$(git diff HEAD~1 HEAD | head -n 120)
+        else
+          RAW_DIFF="Initial commit / No previous HEAD available."
+        fi
+
+        # HTML-escape special characters (<, >, &) using Python to prevent broken email layouts
+        python3 -c '
+        import html, os
+        raw_diff = os.environ.get("RAW_DIFF", "")
+        escaped_diff = html.escape(raw_diff)
+        with open(os.environ["GITHUB_ENV"], "a") as f:
+            f.write(f"ESCAPED_DIFF<<EOF\n{escaped_diff}\nEOF\n")
+        '
+      env:
+        RAW_DIFF: ${{ env.RAW_DIFF }}
 
     - name: Send Email Notification to Admin
       uses: dawidd6/action-send-mail@v3
@@ -37,25 +52,49 @@ jobs:
         server_port: 465
         username: ${{ secrets.USERNAME }}
         password: ${{ secrets.PASSWORD }}
-        
-        subject: "Commit Notification: Push by ${{ env.COMMIT_AUTHOR }}"
-        to: eamon112009@gmail.com
+        subject: "[${{ github.repository }}] New Commit: ${{ env.COMMIT_MSG }}"
+        to: ${{ secrets.EMAIL_TO }}
         from: GitHub Automation Engine
-        
-        body: |
-          Hello Admin,
+        html_body: |
+          <!DOCTYPE html>
+          <html>
+          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f6f8fa; margin: 0; padding: 24px;">
+            <div style="max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #d0d7de; border-radius: 8px; overflow: hidden;">
+              
+              <div style="padding: 16px 20px; background-color: #0d1117; color: #ffffff;">
+                <span style="font-size: 14px; font-weight: 600;">[${{ github.repository }}] Push Notification</span>
+              </div>
 
-          A new commit has been successfully pushed to the repository.
+              <div style="padding: 20px; border-bottom: 1px solid #d0d7de;">
+                <h3 style="margin: 0 0 12px 0; color: #1f2328;">Commit Details</h3>
+                <table style="width: 100%; font-size: 14px; color: #1f2328; border-collapse: collapse;">
+                  <tr>
+                    <td style="padding: 4px 0; font-weight: 600; width: 120px;">Commit:</td>
+                    <td style="padding: 4px 0;"><code>${{ env.COMMIT_HASH }}</code></td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; font-weight: 600;">Message:</td>
+                    <td style="padding: 4px 0;">${{ env.COMMIT_MSG }}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; font-weight: 600;">Author:</td>
+                    <td style="padding: 4px 0;">${{ env.COMMIT_AUTHOR }}</td>
+                  </tr>
+                </table>
+              </div>
 
-          Commit Message: 
-          "${{ env.COMMIT_MSG }}"
+              <div style="padding: 20px; background-color: #0d1117;">
+                <h4 style="margin: 0 0 8px 0; color: #8b949e; font-size: 12px; text-transform: uppercase;">Code Diff Preview (First 120 lines)</h4>
+                <pre style="margin: 0; padding: 12px; background-color: #161b22; color: #e6edf3; font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace; font-size: 12px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap;">${{ env.ESCAPED_DIFF }}</pre>
+              </div>
 
-          Pushed By: 
-          ${{ env.COMMIT_AUTHOR }}
+              <div style="padding: 16px 20px; background-color: #f6f8fa; border-top: 1px solid #d0d7de; text-align: center;">
+                <a href="${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" 
+                   style="display: inline-block; background-color: #1f883d; color: #ffffff; text-decoration: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 13px;">
+                  View Commit on GitHub
+                </a>
+              </div>
 
-          Code Changes Summary (Diff Preview):
-          --------------------------------------------------
-          ${{ env.GIT_DIFF }}
-          --------------------------------------------------
-
-          View full logs directly inside the GitHub Actions pipeline interface.
+            </div>
+          </body>
+          </html>
