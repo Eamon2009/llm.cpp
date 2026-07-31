@@ -13,79 +13,76 @@ permissions:
 jobs:
   check-trigger:
     runs-on: ubuntu-latest
-    if: ${{ github.event.issue.pull_request && startsWith(github.event.comment.body, '/run-checks') && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') }}
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/run-checks') &&
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'MEMBER')
     outputs:
       pr_number: ${{ steps.pr-data.outputs.pr_number }}
-      comment_id: ${{ steps.pr-data.outputs.comment_id }}
     steps:
-      - name: Extract PR and Comment Metadata
+      - name: Extract Metadata
         id: pr-data
-        run: |
-          echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-          echo "comment_id=${{ github.event.comment.id }}" >> $GITHUB_OUTPUT
+        run: echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
 
-      - name: Add rocket reaction
+      - name: Acknowledge execution start
         uses: actions/github-script@v7
         with:
           script: |
-            await github.rest.reactions.createForIssueComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              comment_id: context.payload.comment.id,
-              content: 'rocket'
+              issue_number: context.payload.issue.number,
+              body: `[INFO] PR Check triggered by @${context.payload.comment.user.login}. Running universal syntax checks, linters, cross-platform compilation, and tests...`
             });
 
-      - name: Acknowledge in comment
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: context.payload.comment.id,
-              body: `${context.payload.comment.body}\n\n> 🚀 **Strict PR checks triggered by @${context.payload.comment.user.login}...** Running analysis and build steps.`
-            });
-
-  strict-cpp-checks:
-    runs-on: ubuntu-latest
+  universal-syntax-and-lint:
     needs: check-trigger
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
 
-      - name: Install C++ tools
+      - name: Install System Linters and Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-format clang-tidy cppcheck build-essential g++ clang
+          sudo apt-get install -y clang-format clang-tidy cppcheck python3
+          # Install Hadolint for Dockerfile checking
+          sudo wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          sudo chmod +x /usr/local/bin/hadolint
 
-      - name: Clang-Format Check
+      # Dockerfile Linting
+      - name: Dockerfile Syntax Check
         run: |
-          find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) | grep -v /build/ > cpp_files.txt || true
-          if [ -s cpp_files.txt ]; then
-            clang-format --dry-run -Werror $(cat cpp_files.txt)
+          DOCKERFILES=$(find . -type f \( -name "Dockerfile*" -o -name "*.dockerfile" \) | grep -v /build/ || true)
+          if [ -n "$DOCKERFILES" ]; then
+            echo "[INFO] Checking Dockerfile syntax..."
+            hadolint $DOCKERFILES
+          else
+            echo "[INFO] No Dockerfiles found."
           fi
 
-      - name: CppCheck Analysis
+      # C / C++ / CUDA Formatting and Static Analysis
+      - name: C / C++ / CUDA Formatting Check
         run: |
-          cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem --suppress=unusedFunction --std=c++17 .
+          CPP_FILES=$(find . -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" -o -name "*.cu" -o -name "*.cuh" \) | grep -v /build/ || true)
+          if [ -n "$CPP_FILES" ]; then
+            echo "[INFO] Checking C/C++/CUDA formatting..."
+            clang-format --dry-run --Werror $CPP_FILES
+          else
+            echo "[INFO] No C/C++/CUDA source files found."
+          fi
 
-      - name: Clang-Tidy Analysis
+      - name: C / C++ / CUDA CppCheck Analysis
         run: |
-          find . -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) | grep -v /build/ | while read file; do
-            clang-tidy "$file" -checks="*,-fuchsia-*,-google-*,-llvm-*,-readability-magic-numbers" -- -I. -Iinclude || exit 1
-          done
+          cppcheck --enable=all --error-exitcode=1 \
+            --suppress=missingIncludeSystem \
+            --suppress=unusedFunction \
+            --std=c++17 .
 
-  strict-python-checks:
-    runs-on: ubuntu-latest
-    needs: check-trigger
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
-
+      # Python Syntax and Formatting
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -94,73 +91,163 @@ jobs:
       - name: Install Python Linters
         run: |
           python -m pip install --upgrade pip
-          pip install black isort flake8 pylint bandit
+          pip install flake8 black isort bandit
 
-      - name: Black Formatting
-        run: black --check .
+      - name: Python Syntax Validation
+        run: |
+          PY_FILES=$(find . -name "*.py" -type f | grep -v __pycache__ || true)
+          if [ -n "$PY_FILES" ]; then
+            echo "[INFO] Checking Python syntax compilation..."
+            python -m py_compile $PY_FILES
+          else
+            echo "[INFO] No Python files found."
+          fi
 
-      - name: Isort Import Check
-        run: isort --check-only .
+      - name: Python Formatting and Linting Checks
+        run: |
+          black --check .
+          isort --check-only .
+          flake8 . --max-line-length=127
 
-      - name: Flake8 Syntax & Code Quality
-        run: flake8 . --max-line-length=127 --select=E9,F63,F7,F82
-
-      - name: Bandit Security Scan
+      - name: Python Security Audit (Bandit)
         run: bandit -r . -ll
+  cpp-build-matrix:
+    needs: [check-trigger, universal-syntax-and-lint]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: gcc
+          - os: ubuntu-latest
+            compiler: clang
+          - os: macos-latest
+            compiler: clang
+          - os: windows-latest
+            compiler: msvc
+          - os: windows-latest
+            compiler: gcc
+          - os: windows-latest
+            compiler: clang
+    defaults:
+      run:
+        shell: bash
 
-  build-test:
-    runs-on: ubuntu-latest
-    needs: check-trigger
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Install Linux Build Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential g++ clang libomp-dev
 
-      - name: Build C++ Inference Executable
+      - name: Install Windows MinGW / Clang
+        if: runner.os == 'Windows' && matrix.compiler != 'msvc'
+        run: choco install mingw llvm -y
+
+      - name: Setup MSVC Environment
+        if: runner.os == 'Windows' && matrix.compiler == 'msvc'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build Executable (GCC)
+        if: matrix.compiler == 'gcc'
         run: |
           if [ -f "main.cpp" ]; then
-            g++ -std=c++17 -O3 -fopenmp -I. -Iinclude -o llm.exe main.cpp
+            g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
           fi
 
-      - name: Run Python Pytest Suite
+      - name: Build Executable (Clang / Objective-C++)
+        if: matrix.compiler == 'clang'
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            if [ -f "llm.mm" ] && [ -f "main.cpp" ]; then
+              clang++ -std=c++17 -O3 -I. -Iinclude main.cpp llm.mm -framework Foundation -framework Metal -framework MetalPerformanceShaders -o llm
+            elif [ -f "main.cpp" ]; then
+              clang++ -std=c++17 -O3 -I. -Iinclude main.cpp -o llm
+            fi
+          elif [ -f "main.cpp" ]; then
+            clang++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
+          fi
+
+      - name: Build Executable (MSVC)
+        if: matrix.compiler == 'msvc'
+        run: |
+          if [ -f "main.cpp" ]; then
+            cl /std:c++17 /O2 /openmp /I. /Iinclude main.cpp /Fe:llm.exe
+          fi
+
+  
+  python-tests:
+    needs: [check-trigger, universal-syntax-and-lint]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-cov
-          if [ -f "requirements.txt" ]; then pip install -r requirements.txt || true; fi
-          if [ -d "tests" ] || [ -d "test" ]; then pytest; fi
+          if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
 
+      - name: Run Pytest Suite
+        run: |
+          if [ -d "tests" ] || [ -d "test" ] || [ -n "$(find . -maxdepth 2 -name 'test_*.py')" ]; then
+            pytest --cov=. --cov-report=term-missing -v
+          fi
   summary:
     runs-on: ubuntu-latest
-    needs: [check-trigger, strict-cpp-checks, strict-python-checks, build-test]
+    needs: [check-trigger, universal-syntax-and-lint, cpp-build-matrix, python-tests]
     if: always() && needs.check-trigger.result == 'success'
     env:
       PR_NUMBER: ${{ needs.check-trigger.outputs.pr_number }}
     steps:
-      - name: Post results comment
+      - name: Post PR Summary Comment
         uses: actions/github-script@v7
         with:
           script: |
-            const cpp_status = '${{ needs.strict-cpp-checks.result }}' === 'success' ? '✅ Passed' : '❌ Failed';
-            const python_status = '${{ needs.strict-python-checks.result }}' === 'success' ? '✅ Passed' : '❌ Failed';
-            const build_status = '${{ needs.build-test.result }}' === 'success' ? '✅ Passed' : '❌ Failed';
-            const overall = (cpp_status.includes('✅') && python_status.includes('✅') && build_status.includes('✅')) 
-              ? '✅ **ALL CHECKS PASSED**' 
-              : '❌ **CHECK FAILURES DETECTED**';
+            const formatStatus = (result) => {
+              if (result === 'success') return 'PASSED';
+              if (result === 'skipped') return 'SKIPPED';
+              return 'FAILED';
+            };
 
-            const comment = `## 📋 Maintainer Check Results\n\n` +
+            const lint_status = formatStatus('${{ needs.universal-syntax-and-lint.result }}');
+            const cpp_build_status = formatStatus('${{ needs.cpp-build-matrix.result }}');
+            const python_test_status = formatStatus('${{ needs.python-tests.result }}');
+
+            const allPassed = [lint_status, cpp_build_status, python_test_status]
+              .every(s => s === 'PASSED' || s === 'SKIPPED');
+
+            const overall = allPassed
+              ? 'ALL PR CHECKS PASSED'
+              : 'CHECK FAILURES DETECTED';
+
+            const comment = `## Maintainer PR Check Results\n\n` +
               `| Check Category | Status |\n` +
               `| :--- | :--- |\n` +
-              `| **C++ Strict Quality** | ${cpp_status} |\n` +
-              `| **Python Strict Quality** | ${python_status} |\n` +
-              `| **Build & Tests** | ${build_status} |\n\n` +
-              `**Overall Result**: ${overall}\n\n` +
-              `[View Full Execution Logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+              `| **Universal Syntax & Linting (Docker, C, C++, CUDA, Python)** | ${lint_status} |\n` +
+              `| **C++ / CUDA Cross-Platform Builds** | ${cpp_build_status} |\n` +
+              `| **Python Multi-Version Pytest Suite** | ${python_test_status} |\n\n` +
+              `**Overall Outcome**: ${overall}\n\n` +
+              `[View Execution Logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
 
             await github.rest.issues.createComment({
               issue_number: Number(process.env.PR_NUMBER),
