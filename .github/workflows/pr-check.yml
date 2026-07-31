@@ -84,7 +84,7 @@ jobs:
 
       # Python Syntax and Formatting
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -197,7 +197,7 @@ jobs:
           ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
