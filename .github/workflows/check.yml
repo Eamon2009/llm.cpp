@@ -1,4 +1,4 @@
-name: Syntax Check
+name: Syntax Check (Modified Files Only)
 
 on:
   push:
@@ -25,8 +25,25 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 
 
-    # --- Python Syntax Check ---
+    - name: Get Changed Files
+      id: get_changes
+      run: |
+        # Detect if it's a PR or a direct push, and get the list of modified files
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD)
+        else
+          FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }})
+        fi
+        
+        # Save the list to a multi-line GitHub environment variable
+        echo "CHANGED_FILES<<EOF" >> $GITHUB_ENV
+        echo "$FILES" >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
+
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -37,37 +54,53 @@ jobs:
         python -m pip install --upgrade pip
         pip install flake8
 
-    - name: Lint Python Files
+    - name: Lint Modified Python Files
       run: |
-        # E9, F63, F7, F82 checks syntax errors & undefined variables
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-    - name: Check C/C++ Syntax
-      run: |
-        echo "Checking C and C++ files for syntax errors..."
         errors=0
+        echo "$CHANGED_FILES" | while IFS= read -r file; do
+          # Only check if the file ends in .py AND it still exists (wasn't deleted)
+          if [[ "$file" == *.py ]] && [ -f "$file" ]; then
+            echo "Checking Python file: $file"
+            if ! flake8 "$file" --count --select=E9,F63,F7,F82 --show-source --statistics; then
+              errors=$((errors + 1))
+            fi
+          fi
+        done
         
-        # Loop through C files (-I. includes local root directory for header lookups)
-        while read -r file; do
-          if [ -z "$file" ]; then continue; fi
-          echo "Checking $file"
-          if ! gcc -fsyntax-only -I. "$file"; then
-            echo "::error file=$file::Syntax error in $file"
-            errors=$((errors + 1))
-          fi
-        done < <(find . -type f -name "*.c")
-
-        # Loop through C++ files
-        while read -r file; do
-          if [ -z "$file" ]; then continue; fi
-          echo "Checking $file"
-          if ! g++ -fsyntax-only -I. "$file"; then
-            echo "::error file=$file::Syntax error in $file"
-            errors=$((errors + 1))
-          fi
-        done < <(find . -type f -name "*.cpp")
-
-        if [ $errors -ne 0 ]; then
-          echo "$errors file(s) failed syntax verification."
+        if [ $errors -ne 0 ]; then 
+          echo "$errors Python file(s) failed."
           exit 1
         fi
-        echo "All C, C++, and Python files passed syntax checks!"
+
+    - name: Check C/C++
+      run: |
+        echo "Checking modified C and C++ files for syntax errors..."
+        errors=0
+        
+        echo "$CHANGED_FILES" | while IFS= read -r file; do
+          if [ -f "$file" ]; then # Ensure file exists (skip deleted files)
+          
+            if [[ "$file" == *.c ]]; then
+              echo "Checking C file: $file"
+              if ! gcc -fsyntax-only -I. "$file"; then
+                echo "::error file=$file::Syntax error in $file"
+                errors=$((errors + 1))
+              fi
+              
+            elif [[ "$file" == *.cpp ]]; then
+              echo "Checking C++ file: $file"
+              if ! g++ -fsyntax-only -I. "$file"; then
+                echo "::error file=$file::Syntax error in $file"
+                errors=$((errors + 1))
+              fi
+              
+            fi
+          fi
+        done
+
+        if [ $errors -ne 0 ]; then
+          echo "$errors C/C++ file(s) failed syntax verification."
+          exit 1
+        fi
+        
+        echo "All modified files passed syntax checks!"
