@@ -1,10 +1,10 @@
-name: Compile 
+name: ci
 
 on:
   push:
-    branches: [ master, main, develop ]
+    branches: [ master ]
   pull_request:
-    branches: [ master, main, develop ]
+    branches: [ master ]
 
 jobs:
   detect-changes:
@@ -53,7 +53,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Setup Dependencies based on OS
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential g++ clang libomp-dev
