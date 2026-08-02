@@ -1,4 +1,4 @@
-name: CI Approval Check
+name: CI Approval
 
 on:
   workflow_dispatch:
