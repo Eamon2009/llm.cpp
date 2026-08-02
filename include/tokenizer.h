@@ -16,37 +16,37 @@
 //    Shards utilize a fixed 1KB header followed by a flat stream of uint16_t
 //    token IDs, capping vocabulary support at 65,536 entries.
 // notes:
-// * Platform-Specific Memory Mapping: look `MMapShard::open()` for platform
+// * Platform-Specific Memory Mapping: look MMapShard::open() for platform
 //    branches. Windows uses CreateFileMappingA/MapViewOfFile, while POSIX systems
 //    rely on open(), mmap(), and madvise(MADV_RANDOM) to optimize non-sequential
 //    batch sampling hints for kerenels
 // * Move-Only Semantics: `MMapShard` implements explicit move-only semantics
 //    (`= delete` on copy constructors/operators) to safely manage file descriptors
 //    and resource handles without double-free errors
-// * Cache-Aligned Index Structures: `BPEIndex` is explicitly alignas(16) to ensure
+// * Cache-Aligned Index Structures: BPEIndex is explicitly alignas(16) to ensure
 //    optimal L1/L2 cache line utilization during fast doubly-linked list traversal
 //    in BPE merging routine
 // * Packed Hash Keys: Pair keys for merge ranks are packed into a single uint64_t
-//    using bit shifts (`((uint64_t)left << 32) | (uint32_t)right`) to optimize
-//    hash map lookups (`std::unordered_map`)
-// * Parallelized Batch Sampling: OpenMP (`#pragma omp parallel for`) is leveraged
-//    across batch sampling (`get_batch_text` and `get_batch_sharded`) and base encoding
+//    using bit shifts (((uint64_t)left << 32) | (uint32_t)right) to optimize
+//    hash map lookups (std::unordered_map
+// * Parallelized Batch Sampling: OpenMP (#pragma omp parallel for) is leveraged
+//    across batch sampling (get_batch_text and get_batch_sharded) and base encoding
 //    to parallelize random number generation and index lookups safely using thread-local
 //    random engines (std::mt19937)
 
-Shard Capacity Limit: Because shards serialize tokens as `uint16_t`,
+Shard Capacity Limit: Because shards serialize tokens as uint16_t
 vocabularies exceeding 65,536 entries will cause a hard runtime exception
-(`write_shards` check). Do not alter token datatype widths without redesigning
-the header structure (`SHARD_HEADER_INTS`).
+write_shards check). Do not alter token datatype widths without redesigning
+the header structure (SHARD_HEADER_INT).
 
-Boundary Conditions in Sharded Sampling: `get_batch_sharded` contains both a
+Boundary Conditions in Sharded Sampling: get_batch_sharded contains both a
 fast path (contiguous memory inside a single shard) and a rare path (blocks
-crossing shard boundaries via prefix-sum lookups using `std::upper_bound`).
+crossing shard boundaries via prefix-sum lookups using std::upper_bound).
 Changes to indexing logic must maintain safety against off-by-one segment faults.
 
 Mutability and Thread Safety: While data streaming via mmap is read-only and
 inherently thread-safe across multiple worker threads, ensure that external
-callers do not concurrently mutate vocabulary mappings (`token_to_id`, `vocab`)
+callers do not concurrently mutate vocabulary mappings (token_to_i, vocab)
 while inference/encoding or training loops are executing.
 // ----------------------------------------==--------------------------------------*/
 #pragma once
@@ -55,6 +55,7 @@ while inference/encoding or training loops are executing.
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <omp.h>
@@ -66,12 +67,6 @@ while inference/encoding or training loops are executing.
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-// Directory scanning / mkdir via std::filesystem -- portable across
-// Linux/macOS/Windows, no platform #ifdef needed for this part.
-#include <filesystem>
-
-// Memory-mapping is platform-specific: POSIX mmap vs Win32 file mappings.
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 // #define NOMINMAX
@@ -80,6 +75,7 @@ while inference/encoding or training loops are executing.
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #endif
 
@@ -419,7 +415,8 @@ struct DataLoader
             shard_train.build_prefix();
             shard_val.build_prefix();
 
-            std::string vocab_path = dir + "/tokenizer.bin";
+            // Cross-platform path generation
+            std::string vocab_path = (fs::path(dir) / "tokenizer.bin").string();
             std::ifstream check(vocab_path, std::ios::binary);
             if (check.good())
             {
@@ -460,7 +457,7 @@ struct DataLoader
                         out += vocab[id];
             return out;
       }
-      // Unified batch sampler -- identical signature/behavior for callers
+      // Unified batch sampler identical signature/behavior for callers
       // regardless of whether we're backed by RAM vectors or mmap shards.
       std::pair<std::vector<int>, std::vector<int>>
       get_batch(const std::string &split, int batch_size, int block_size, std::mt19937 &rng) const
@@ -490,7 +487,9 @@ struct DataLoader
             make_directory(out_dir);
             write_split_shards(out_dir, "train", train_data, shard_size_tokens);
             write_split_shards(out_dir, "val", val_data, shard_size_tokens);
-            save_vocab(out_dir + "/tokenizer.bin");
+
+            // Cross-platform path generation
+            save_vocab((fs::path(out_dir) / "tokenizer.bin").string());
 
             std::cout << "[SHARD] Wrote shards + tokenizer.bin to " << out_dir << "\n";
       }
@@ -649,7 +648,8 @@ struct DataLoader
                                 "%s_%06llu.bin",
                                 split_name.c_str(),
                                 (unsigned long long)shard_idx);
-                  std::string path = out_dir + "/" + name_buf;
+
+                  std::string path = (fs::path(out_dir) / name_buf).string();
 
                   std::ofstream f(path, std::ios::binary);
                   if (!f.is_open())
@@ -700,7 +700,7 @@ struct DataLoader
             return {x, y};
       }
 
-      // ---- SHARD-mode batch sampling ----
+      // sherd-mode batch sampling
       // Samples a global offset over the virtual concatenation of shards.
       // Fast path: the whole block lives inside one shard -> direct mmap
       // pointer reads. Rare path (block straddles a shard boundary):
@@ -899,8 +899,11 @@ struct DataLoader
                   uint64_t best_key = 0;
                   size_t max_count = 0;
 
-                  for (auto const &[key, pos_vec] : pair_pos)
+                  // Refactored from C++17 structured binding to ensure cross-compiler compatibility
+                  for (const auto &kv : pair_pos)
                   {
+                        uint64_t key = kv.first;
+                        const auto &pos_vec = kv.second;
                         if (pos_vec.size() > max_count)
                         {
                               max_count = pos_vec.size();
