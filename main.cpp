@@ -19,6 +19,7 @@
 
 #include "config/config.h"
 #include "include/backward.h"
+#include "include/llm-cpp.hpp"
 #include "include/lm.h"
 #include "include/sampler.h"
 #include "include/tokenizer.h"
@@ -40,7 +41,7 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <psapi.h> // K32GetProcessMemoryInfo ships in kernel32.dll, no extra .lib needed
+#include <psapi.h> // K32GetProcessMemoryInfo ships in kernel32.dll
 #include <windows.h>
 #elif defined(__APPLE__)
 #include <mach/mach.h>
@@ -49,6 +50,11 @@
 #elif defined(__linux__)
 #include <unistd.h>
 #endif
+
+// ANSI color escape codes for terminal formatting
+#define ANSI_CYAN "\033[96m"
+#define ANSI_BOLD "\033[1m"
+#define ANSI_RESET "\033[0m"
 
 static volatile bool g_interrupted = false;
 static void sig_handler(int)
@@ -420,7 +426,7 @@ int main(int argc, char *argv[])
 {
       std::signal(SIGINT, sig_handler);
 
-      std::cout << "llm.cpp\n";
+      print_banner();
 
       std::string data_path = DEFAULT_CLEANED_PATH;
       std::string model_path = BEST_MODEL_PATH;
