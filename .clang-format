@@ -1,27 +1,15 @@
 ---
 Language: Cpp
 BasedOnStyle: LLVM
-
-# Indentation and Spacing
 IndentWidth: 6
 TabWidth: 6
 UseTab: Never
 ContinueIndentWidth: 6
-
-# Brace Placement (Allman style: opening braces on new line)
 BreakBeforeBraces: Allman
-
-# Column Width Limit
 ColumnLimit: 100
-
-# Include Sorting
 SortIncludes: true
-
-# Pointer and Reference Alignment
 DerivePointerAlignment: false
 PointerAlignment: Right
-
-# Spaces
 SpaceBeforeCppLambdaBrackets: true
 SpaceBeforeAssignmentOperators: true
 SpacesInAngles: false
