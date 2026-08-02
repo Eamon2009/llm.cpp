@@ -32,6 +32,7 @@ jobs:
             tag_name="v${raw_tag}"
           fi
           echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
+
   macos-arm64-cpu:
     name: macOS Apple Silicon (arm64) CPU
     needs: release-metadata
@@ -132,6 +133,7 @@ jobs:
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz
           if-no-files-found: error
           retention-days: 30
+
   ubuntu-x64-cpu:
     name: Ubuntu x64 (CPU)
     needs: release-metadata
@@ -453,6 +455,7 @@ jobs:
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz
           if-no-files-found: error
           retention-days: 30
+
   android-arm64-cpu:
     name: Android arm64 (CPU)
     needs: release-metadata
@@ -510,6 +513,7 @@ jobs:
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz
           if-no-files-found: error
           retention-days: 30
+
   windows-x64-cpu:
     name: Windows x64 (CPU)
     needs: release-metadata
@@ -640,9 +644,13 @@ jobs:
       - windows-x64-cpu
       - windows-arm64-cpu
       - windows-x64-cuda13
+    # Run this job as long as we got the version tag, even if some builds failed
+    if: always() && needs.release-metadata.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ needs.release-metadata.outputs.tag_name }}
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -652,54 +660,82 @@ jobs:
 
       - name: Generate release notes
         shell: bash
+        env:
+          RES_MACOS_ARM: ${{ needs.macos-arm64-cpu.result }}
+          RES_IOS: ${{ needs.ios-xcframework.result }}
+          RES_UBUNTU_X64_CPU: ${{ needs.ubuntu-x64-cpu.result }}
+          RES_UBUNTU_ARM_CPU: ${{ needs.ubuntu-arm64-cpu.result }}
+          RES_UBUNTU_X64_VULKAN: ${{ needs.ubuntu-x64-vulkan.result }}
+          RES_UBUNTU_ARM_VULKAN: ${{ needs.ubuntu-arm64-vulkan.result }}
+          RES_UBUNTU_SYCL32: ${{ needs.ubuntu-x64-sycl-fp32.result }}
+          RES_UBUNTU_SYCL16: ${{ needs.ubuntu-x64-sycl-fp16.result }}
+          RES_ANDROID_ARM: ${{ needs.android-arm64-cpu.result }}
+          RES_WIN_X64_CPU: ${{ needs.windows-x64-cpu.result }}
+          RES_WIN_ARM_CPU: ${{ needs.windows-arm64-cpu.result }}
+          RES_WIN_CUDA: ${{ needs.windows-x64-cuda13.result }}
         run: |
-          cat > release-notes.md <<'EOF'
-          # Release ${{ needs.release-metadata.outputs.tag_name }}
+          print_row() {
+            local os="$1"
+            local arch="$2"
+            local variant="$3"
+            local result="$4"
+            local filename="$5"
+            
+            if [[ "$result" == "success" ]]; then
+              echo "| $os | $arch | $variant | Built ✅ | [Download](../../releases/download/$TAG/$filename) |"
+            elif [[ "$result" == "skipped" ]]; then
+              echo "| $os | $arch | $variant | Skipped ⏭️ | - |"
+            else
+              echo "| $os | $arch | $variant | Failed ❌ | - |"
+            fi
+          }
 
-          ## Platform Support
-
-          ### macOS/iOS
-
-          | Platform | Architecture | Status | Download |
-          |----------|--------------|--------|----------|
-          | macOS | Apple Silicon (arm64) | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu.tar.gz) |
-          | iOS | XCFramework | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz) |
-
-          ### Linux
-
-          | Platform | Architecture | Variant | Status | Download |
-          |----------|--------------|---------|--------|----------|
-          | Ubuntu | x64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cpu.tar.gz) |
-          | Ubuntu | arm64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-cpu.tar.gz) |
-          | Ubuntu | x64 | Vulkan | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan.tar.gz) |
-          | Ubuntu | arm64 | Vulkan | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz) |
-          | Ubuntu | x64 | SYCL FP32 | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32.tar.gz) |
-          | Ubuntu | x64 | SYCL FP16 | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz) |
-
-          ### Android
-
-          | Platform | Architecture | Variant | Status | Download |
-          |----------|--------------|---------|--------|----------|
-          | Android | arm64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz) |
-
-          ### Windows
-
-          | Platform | Architecture | Variant | Status | Download |
-          |----------|--------------|---------|--------|----------|
-          | Windows | x64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cpu.zip) |
-          | Windows | arm64 | CPU | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu.zip) |
-          | Windows | x64 | CUDA 13 (13.3 DLLs) | Built | [Download](../../releases/download/${{ needs.release-metadata.outputs.tag_name }}/llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13.zip) |
-
-          ## Legend
-
-          - Built = Available for download
-          - Disabled = Not built
-          - Skipped = Not included in this release
-
-          ---
-
-          For detailed build information and installation instructions, please refer to the [README](../../).
-          EOF
+          {
+            echo "# Release $TAG"
+            echo ""
+            echo "## Platform Support"
+            echo ""
+            
+            echo "### macOS / iOS"
+            echo "| Platform | Architecture | Variant | Status | Download |"
+            echo "|----------|--------------|---------|--------|----------|"
+            print_row "macOS" "Apple Silicon (arm64)" "CPU" "$RES_MACOS_ARM" "llm.cpp-$TAG-bin-macos-arm64-cpu.tar.gz"
+            print_row "iOS" "arm64 / x86_64" "XCFramework" "$RES_IOS" "llm.cpp-$TAG-ios-xcframework.tar.gz"
+            echo ""
+            
+            echo "### Linux (Ubuntu)"
+            echo "| Platform | Architecture | Variant | Status | Download |"
+            echo "|----------|--------------|---------|--------|----------|"
+            print_row "Ubuntu" "x64" "CPU" "$RES_UBUNTU_X64_CPU" "llm.cpp-$TAG-bin-ubuntu-x64-cpu.tar.gz"
+            print_row "Ubuntu" "arm64" "CPU" "$RES_UBUNTU_ARM_CPU" "llm.cpp-$TAG-bin-ubuntu-arm64-cpu.tar.gz"
+            print_row "Ubuntu" "x64" "Vulkan" "$RES_UBUNTU_X64_VULKAN" "llm.cpp-$TAG-bin-ubuntu-x64-vulkan.tar.gz"
+            print_row "Ubuntu" "arm64" "Vulkan" "$RES_UBUNTU_ARM_VULKAN" "llm.cpp-$TAG-bin-ubuntu-arm64-vulkan.tar.gz"
+            print_row "Ubuntu" "x64" "SYCL FP32" "$RES_UBUNTU_SYCL32" "llm.cpp-$TAG-bin-ubuntu-x64-sycl-fp32.tar.gz"
+            print_row "Ubuntu" "x64" "SYCL FP16" "$RES_UBUNTU_SYCL16" "llm.cpp-$TAG-bin-ubuntu-x64-sycl-fp16.tar.gz"
+            echo ""
+            
+            echo "### Android"
+            echo "| Platform | Architecture | Variant | Status | Download |"
+            echo "|----------|--------------|---------|--------|----------|"
+            print_row "Android" "arm64" "CPU" "$RES_ANDROID_ARM" "llm.cpp-$TAG-bin-android-arm64-cpu.tar.gz"
+            echo ""
+            
+            echo "### Windows"
+            echo "| Platform | Architecture | Variant | Status | Download |"
+            echo "|----------|--------------|---------|--------|----------|"
+            print_row "Windows" "x64" "CPU" "$RES_WIN_X64_CPU" "llm.cpp-$TAG-bin-windows-x64-cpu.zip"
+            print_row "Windows" "arm64" "CPU" "$RES_WIN_ARM_CPU" "llm.cpp-$TAG-bin-windows-arm64-cpu.zip"
+            print_row "Windows" "x64" "CUDA 13" "$RES_WIN_CUDA" "llm.cpp-$TAG-bin-windows-x64-cuda13.zip"
+            echo ""
+            
+            echo "## Legend"
+            echo "- **Built ✅**: Successfully compiled and available for download."
+            echo "- **Failed ❌**: Build failed during compilation or smoke testing."
+            echo "- **Skipped ⏭️**: Build was bypassed or cancelled."
+            echo ""
+            echo "---"
+            echo "For detailed build information and installation instructions, please refer to the [README](../../)."
+          } > release-notes.md
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
