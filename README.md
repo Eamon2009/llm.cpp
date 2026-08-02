@@ -90,11 +90,11 @@ should see something like this
 | Repetition Penalty                   | 10                                   |
 | Repetition Window                    | 10                                   |
 +--------------------------------------+--------------------------------------+
-step      1/5000 | train loss 7.693331 | val loss 7.692642  | lr 5.00e-04 |  5949.88 ms |    344 tok/s | ram 224.3 MB
-step      2/5000 | train loss 7.225118 | val loss 7.692642  | lr 5.00e-04 |  6058.38 ms |    338 tok/s | ram 224.0 MB
-step      3/5000 | train loss 7.061631 | val loss 7.692642  | lr 5.00e-04 |  5943.76 ms |    344 tok/s | ram 223.5 MB
-step      4/5000 | train loss 6.966476 | val loss 7.692642  | lr 5.00e-04 |  6059.61 ms |    337 tok/s | ram 225.0 MB
-step      5/5000 | train loss 6.856962 | val loss 7.643652  | lr 5.00e-04 |  5931.75 ms |    345 tok/s | ram 224.5 MB
+step 1/5000 | train loss 7.693331 | val loss 7.692642 | lr 5.00e-04 |  5949.88 ms | 344 tok/s | ram 224.3 MB
+step 2/5000 | train loss 7.225118 | val loss 7.692642 | lr 5.00e-04 |  6058.38 ms | 338 tok/s | ram 224.0 MB
+step 3/5000 | train loss 7.061631 | val loss 7.692642 | lr 5.00e-04 |  5943.76 ms | 344 tok/s | ram 223.5 MB
+step 4/5000 | train loss 6.966476 | val loss 7.692642 | lr 5.00e-04 |  6059.61 ms | 337 tok/s | ram 225.0 MB
+step 5/5000 | train loss 6.856962 | val loss 7.643652 | lr 5.00e-04 |  5931.75 ms | 345 tok/s | ram 224.5 MB
 ```
 
 This trains from scratch on `data/input.txt` and writes the best checkpoint to `best_model.bin`. Once you have a checkpoint, generate or chat with it:
