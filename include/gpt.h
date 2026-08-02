@@ -1,26 +1,16 @@
 #pragma once
-// ============================================================
-//  include/gpt.h  –  GPT Language Model
-//  Mirrors: class GPTLanguageModel in Python
-// ============================================================
-
-#include "tensor.h"
-#include "embedding.h"
 #include "block.h"
+#include "config/config.h"
+#include "embedding.h"
 #include "layernorm.h"
 #include "linear.h"
-#include "config/config.h"
-#include <vector>
-#include <fstream>
+#include "tensor.h"
+
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <random>
-
-// ------------------------------------------------------------------
-// Cross-entropy loss for language modelling
-//   logits : [B*T, vocab_size]   (flat)
-//   targets: flat integer indices, length B*T
-// ------------------------------------------------------------------
+#include <vector>
 inline float cross_entropy(const Tensor &logits, const std::vector<int> &targets)
 {
       int BT = logits.shape[0];
@@ -53,10 +43,13 @@ struct AdamW
       std::vector<std::vector<float>> m, v; // first/second moment
 
       AdamW(float lr_ = 3e-4f,
-            float beta1_ = 0.9f, float beta2_ = 0.999f,
-            float eps_ = 1e-8f, float wd = 0.0f)
-          : lr(lr_), beta1(beta1_), beta2(beta2_),
-            eps(eps_), weight_decay(wd), step_count(0) {}
+            float beta1_ = 0.9f,
+            float beta2_ = 0.999f,
+            float eps_ = 1e-8f,
+            float wd = 0.0f)
+            : lr(lr_), beta1(beta1_), beta2(beta2_), eps(eps_), weight_decay(wd), step_count(0)
+      {
+      }
 
       void add_param(std::vector<float> &p)
       {
@@ -103,15 +96,10 @@ struct GPTLanguageModel
       LayerNorm ln_f;
       Linear lm_head; // [n_embd, vocab_size]
 
-      GPTLanguageModel(int vocab, int embd, int heads, int layers,
-                       int blk_sz, unsigned int seed)
-          : vocab_size(vocab), n_embd(embd), n_head(heads),
-            n_layer(layers), block_size(blk_sz),
-            rng(seed),
-            token_emb(vocab, embd, rng),
-            pos_emb(blk_sz, embd, rng),
-            ln_f(embd),
-            lm_head(embd, vocab, true, rng)
+      GPTLanguageModel(int vocab, int embd, int heads, int layers, int blk_sz, unsigned int seed)
+            : vocab_size(vocab), n_embd(embd), n_head(heads), n_layer(layers), block_size(blk_sz),
+              rng(seed), token_emb(vocab, embd, rng), pos_emb(blk_sz, embd, rng), ln_f(embd),
+              lm_head(embd, vocab, true, rng)
       {
             for (int i = 0; i < layers; ++i)
                   blocks.emplace_back(embd, heads, rng);
@@ -119,7 +107,8 @@ struct GPTLanguageModel
 
       int num_params() const
       {
-            int n = token_emb.num_params() + pos_emb.num_params() + ln_f.num_params() + lm_head.num_params();
+            int n = token_emb.num_params() + pos_emb.num_params() + ln_f.num_params() +
+                    lm_head.num_params();
             for (auto &b : blocks)
                   n += b.num_params();
             return n;
@@ -133,7 +122,8 @@ struct GPTLanguageModel
       //   returns: (logits [B*T, vocab], loss)  loss=0 when no targets
       // ----------------------------------------------------------------
       std::pair<Tensor, float> forward(const std::vector<int> &idx,
-                                       int B, int T,
+                                       int B,
+                                       int T,
                                        const std::vector<int> &targets,
                                        bool training)
       {
@@ -155,7 +145,7 @@ struct GPTLanguageModel
             // final layer norm
             x = ln_f.forward(x);
 
-            // lm_head  →  logits [B, T, vocab]
+            // lm_head  logits [B, T, vocab]
             Tensor logits3d = lm_head.forward(x); // [B, T, vocab]
 
             // reshape to [B*T, vocab]
@@ -184,7 +174,8 @@ struct GPTLanguageModel
                   int T = std::min((int)context.size(), block_size);
                   std::vector<int> ctx(context.end() - T, context.end());
 
-                  std::pair<Tensor, float> forward_result = forward(ctx, 1, T, std::vector<int>(), false);
+                  std::pair<Tensor, float> forward_result =
+                        forward(ctx, 1, T, std::vector<int>(), false);
                   Tensor logits = forward_result.first;
 
                   // pick last time-step logits  [vocab]
