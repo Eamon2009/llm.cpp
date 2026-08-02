@@ -590,7 +590,7 @@ inline Tensor forward_ffn_save(const Tensor &x,
       return out;
 }
 
-#include "gpt.h" // for GPTLanguageModel layout
+#include "lm.h" // for GPTLanguageModel layout
 
 inline SavedForward forward_save(GPTLanguageModel &model,
                                  const std::vector<int> &idx,
