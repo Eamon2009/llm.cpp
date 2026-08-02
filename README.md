@@ -79,7 +79,7 @@ should see something like this
 |======================================+======================================|
 | Parameter / Spec                     | Value                                |
 |--------------------------------------+--------------------------------------|
-| Host CPU Device                      | AMD Ryzen 5 PRO 3500U w/ Radeon...   |
+| Host CPU Device                      | AMD Ryzen 5 PRO....                  |
 | Host RAM (Total)                     | 6045 MB                              |
 | Max Sequence Length                  | 64                                   |
 | Vocab Size (BPE Merges)              | 2244                                 |
