@@ -16,49 +16,48 @@
 //    Shards utilize a fixed 1KB header followed by a flat stream of uint16_t
 //    token IDs, capping vocabulary support at 65,536 entries.
 // notes:
-// * Platform-Specific Memory Mapping: look MMapShard::open() for platform
+// * Platform-Specific Memory Mapping: look `MMapShard::open()` for platform
 //    branches. Windows uses CreateFileMappingA/MapViewOfFile, while POSIX systems
 //    rely on open(), mmap(), and madvise(MADV_RANDOM) to optimize non-sequential
 //    batch sampling hints for kerenels
 // * Move-Only Semantics: `MMapShard` implements explicit move-only semantics
 //    (`= delete` on copy constructors/operators) to safely manage file descriptors
 //    and resource handles without double-free errors
-// * Cache-Aligned Index Structures: BPEIndex is explicitly alignas(16) to ensure
+// * Cache-Aligned Index Structures: `BPEIndex` is explicitly alignas(16) to ensure
 //    optimal L1/L2 cache line utilization during fast doubly-linked list traversal
 //    in BPE merging routine
 // * Packed Hash Keys: Pair keys for merge ranks are packed into a single uint64_t
-//    using bit shifts (((uint64_t)left << 32) | (uint32_t)right) to optimize
-//    hash map lookups (std::unordered_map
-// * Parallelized Batch Sampling: OpenMP (#pragma omp parallel for) is leveraged
-//    across batch sampling (get_batch_text and get_batch_sharded) and base encoding
+//    using bit shifts (`((uint64_t)left << 32) | (uint32_t)right`) to optimize
+//    hash map lookups (`std::unordered_map`)
+// * Parallelized Batch Sampling: OpenMP (`#pragma omp parallel for`) is leveraged
+//    across batch sampling (`get_batch_text` and `get_batch_sharded`) and base encoding
 //    to parallelize random number generation and index lookups safely using thread-local
 //    random engines (std::mt19937)
 
-Shard Capacity Limit: Because shards serialize tokens as uint16_t
+Shard Capacity Limit: Because shards serialize tokens as `uint16_t`,
 vocabularies exceeding 65,536 entries will cause a hard runtime exception
-write_shards check). Do not alter token datatype widths without redesigning
-the header structure (SHARD_HEADER_INT).
+(`write_shards` check). Do not alter token datatype widths without redesigning
+the header structure (`SHARD_HEADER_INTS`).
 
-Boundary Conditions in Sharded Sampling: get_batch_sharded contains both a
+Boundary Conditions in Sharded Sampling: `get_batch_sharded` contains both a
 fast path (contiguous memory inside a single shard) and a rare path (blocks
-crossing shard boundaries via prefix-sum lookups using std::upper_bound).
+crossing shard boundaries via prefix-sum lookups using `std::upper_bound`).
 Changes to indexing logic must maintain safety against off-by-one segment faults.
 
 Mutability and Thread Safety: While data streaming via mmap is read-only and
 inherently thread-safe across multiple worker threads, ensure that external
-callers do not concurrently mutate vocabulary mappings (token_to_i, vocab)
+callers do not concurrently mutate vocabulary mappings (`token_to_id`, `vocab`)
 while inference/encoding or training loops are executing.
 // ----------------------------------------==--------------------------------------*/
+
 #pragma once
 #include "config/config.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <omp.h>
 #include <queue>
 #include <random>
 #include <set>
@@ -67,9 +66,22 @@ while inference/encoding or training loops are executing.
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+// Conditionally include OpenMP so it compiles on compilers without native OpenMP support
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+// Directory scanning / mkdir via std::filesystem -- portable across
+// Linux/macOS/Windows, no platform #ifdef needed for this part.
+#include <filesystem>
+
+// Memory-mapping is platform-specific: POSIX mmap vs Win32 file mappings.
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX // Prevent Windows macros from breaking std::min / std::max
+#endif
 #define WIN32_LEAN_AND_MEAN
-// #define NOMINMAX
 #include <windows.h>
 #else
 #include <fcntl.h>
@@ -150,10 +162,7 @@ struct DataLoader
             MMapShard(const MMapShard &) = delete;
             MMapShard &operator=(const MMapShard &) = delete;
 
-            MMapShard(MMapShard &&o) noexcept
-            {
-                  *this = std::move(o);
-            }
+            MMapShard(MMapShard &&o) noexcept { *this = std::move(o); }
             MMapShard &operator=(MMapShard &&o) noexcept
             {
                   if (this != &o)
@@ -181,10 +190,7 @@ struct DataLoader
                   return *this;
             }
 
-            ~MMapShard()
-            {
-                  release();
-            }
+            ~MMapShard() { release(); }
 
             void release()
             {
@@ -212,13 +218,8 @@ struct DataLoader
                   path = p;
 
 #ifdef _WIN32
-                  hFile = CreateFileA(p.c_str(),
-                                      GENERIC_READ,
-                                      FILE_SHARE_READ,
-                                      nullptr,
-                                      OPEN_EXISTING,
-                                      FILE_ATTRIBUTE_NORMAL,
-                                      nullptr);
+                  hFile = CreateFileA(p.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                      OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
                   if (hFile == INVALID_HANDLE_VALUE)
                         throw std::runtime_error("[Shard] Cannot open: " + p);
 
@@ -237,10 +238,6 @@ struct DataLoader
                   map_base = MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0);
                   if (!map_base)
                         throw std::runtime_error("[Shard] MapViewOfFile failed: " + p);
-                  // (No direct equivalent of madvise(MADV_RANDOM) on Windows;
-                  // PrefetchVirtualMemory exists on Win8+ but is opt-in/sequential-
-                  // oriented, so we simply skip it here -- random access still
-                  // works correctly, just without the readahead hint.)
 #else
                   fd = ::open(p.c_str(), O_RDONLY);
                   if (fd < 0)
@@ -258,8 +255,6 @@ struct DataLoader
                   if (map_base == MAP_FAILED)
                         throw std::runtime_error("[Shard] mmap failed: " + p);
 
-                  // Batches sample random offsets, not sequential scans -- tell
-                  // the kernel not to bother with aggressive readahead.
                   madvise(map_base, map_size, MADV_RANDOM);
 #endif
 
@@ -274,7 +269,7 @@ struct DataLoader
                   num_tokens = (hi << 32) | lo;
 
                   data = reinterpret_cast<const uint16_t *>(
-                        reinterpret_cast<const char *>(map_base) + SHARD_HEADER_BYTES);
+                      reinterpret_cast<const char *>(map_base) + SHARD_HEADER_BYTES);
 
                   uint64_t expected_bytes = SHARD_HEADER_BYTES + num_tokens * sizeof(uint16_t);
                   if (expected_bytes != map_size)
@@ -282,12 +277,10 @@ struct DataLoader
             }
       };
 
-      // A split (train/val) as a virtual concatenation of shards, so batch
-      // sampling can treat many small files as one big logical stream.
       struct ShardedSplit
       {
             std::vector<MMapShard> shards;
-            std::vector<uint64_t> prefix; // prefix[i] = tokens before shard i
+            std::vector<uint64_t> prefix;
             uint64_t total_tokens{0};
 
             void add(const std::string &path)
@@ -322,11 +315,7 @@ struct DataLoader
       ShardedSplit shard_train;
       ShardedSplit shard_val;
 
-      // Public entry point. Auto-detects at runtime:
-      //   - path is a directory  -> shard mode  (llm.exe data/shards)
-      //   - path is a .txt file  -> classic BPE  (llm.exe data/input.txt)
-      void load(const std::string &path,
-                int target_vocab = BPE_VOCAB_SIZE,
+      void load(const std::string &path, int target_vocab = BPE_VOCAB_SIZE,
                 double train_split = TRAIN_SPLIT)
       {
             if (is_directory(path))
@@ -338,10 +327,8 @@ struct DataLoader
                   load_text(path, target_vocab, train_split);
             }
       }
-      // TEXT mode: unchanged behavior, plus a vocab cache so re-running on
-      // the same file doesn't re-train BPE from scratch every time.
-      void load_text(const std::string &path,
-                     int target_vocab = BPE_VOCAB_SIZE,
+
+      void load_text(const std::string &path, int target_vocab = BPE_VOCAB_SIZE,
                      double train_split = TRAIN_SPLIT)
       {
             mode = DataMode::TEXT;
@@ -388,10 +375,7 @@ struct DataLoader
             std::cout << "[DATA]  Train tokens : " << train_data.size() << "\n";
             std::cout << "[DATA]  Val tokens   : " << val_data.size() << "\n";
       }
-      // SHARD mode: mmap every train_*.bin / val_*.bin in the directory.
-      // Nothing is copied into RAM up front -- pages fault in on demand
-      // and the OS evicts them under memory pressure, so this scales to
-      // corpora much larger than available RAM.
+
       void load_shards(const std::string &dir)
       {
             mode = DataMode::SHARDED;
@@ -415,7 +399,6 @@ struct DataLoader
             shard_train.build_prefix();
             shard_val.build_prefix();
 
-            // Cross-platform path generation
             std::string vocab_path = (fs::path(dir) / "tokenizer.bin").string();
             std::ifstream check(vocab_path, std::ios::binary);
             if (check.good())
@@ -439,8 +422,8 @@ struct DataLoader
             if (shard_train.total_tokens <= (uint64_t)BLOCK_SIZE ||
                 shard_val.total_tokens <= (uint64_t)BLOCK_SIZE)
                   throw std::runtime_error(
-                        "[DataLoader] Sharded dataset too small for BLOCK_SIZE=" +
-                        std::to_string(BLOCK_SIZE));
+                      "[DataLoader] Sharded dataset too small for BLOCK_SIZE=" +
+                      std::to_string(BLOCK_SIZE));
       }
 
       std::vector<int> encode(const std::string &text) const
@@ -457,8 +440,7 @@ struct DataLoader
                         out += vocab[id];
             return out;
       }
-      // Unified batch sampler identical signature/behavior for callers
-      // regardless of whether we're backed by RAM vectors or mmap shards.
+
       std::pair<std::vector<int>, std::vector<int>>
       get_batch(const std::string &split, int batch_size, int block_size, std::mt19937 &rng) const
       {
@@ -466,36 +448,27 @@ struct DataLoader
                   return get_batch_sharded(split, batch_size, block_size, rng);
             return get_batch_text(split, batch_size, block_size, rng);
       }
-      // Shard-writer: turn an already-loaded corpus (TEXT mode) into a
-      // directory of .bin shards using the *same* trained vocab, so you
-      // can pretokenize once and reuse across many training runs.
-      //   loader.load_text("data/input.txt");
-      //   loader.write_shards("data/shards");
+
       void write_shards(const std::string &out_dir,
                         uint64_t shard_size_tokens = SHARD_SIZE_TOKENS) const
       {
             if (vocab.empty())
                   throw std::runtime_error(
-                        "[SHARD] No vocab trained/loaded -- call load_text() first");
+                      "[SHARD] No vocab trained/loaded -- call load_text() first");
             if (vocab.size() > 65536)
                   throw std::runtime_error("[SHARD] vocab_size " + std::to_string(vocab.size()) +
                                            " exceeds uint16_t shard capacity (65536)");
             if (train_data.empty() || val_data.empty())
                   throw std::runtime_error(
-                        "[SHARD] No train/val data in memory -- call load_text() first");
+                      "[SHARD] No train/val data in memory -- call load_text() first");
 
             make_directory(out_dir);
             write_split_shards(out_dir, "train", train_data, shard_size_tokens);
             write_split_shards(out_dir, "val", val_data, shard_size_tokens);
-
-            // Cross-platform path generation
             save_vocab((fs::path(out_dir) / "tokenizer.bin").string());
 
             std::cout << "[SHARD] Wrote shards + tokenizer.bin to " << out_dir << "\n";
       }
-
-      // Vocab persistence (binary): lets shard mode decode(), and lets
-      // TEXT mode skip re-training BPE on repeat runs of the same file.
 
       void save_vocab(const std::string &path) const
       {
@@ -561,7 +534,6 @@ struct DataLoader
       }
 
     private:
-      // small binary I/O helpers -
       static void write_u32(std::ofstream &f, uint32_t v)
       {
             f.write(reinterpret_cast<const char *>(&v), sizeof(v));
@@ -590,11 +562,10 @@ struct DataLoader
             return vocab_size == target_vocab;
       }
 
-      // filesystem helpers (std::filesystem portable)
       static bool is_directory(const std::string &path)
       {
             std::error_code ec;
-            return fs::is_directory(path, ec); // false (not throw) if path doesn't exist
+            return fs::is_directory(path, ec);
       }
 
       static void make_directory(const std::string &path)
@@ -623,18 +594,16 @@ struct DataLoader
                   std::string name = entry.path().filename().string();
                   bool has_prefix = name.compare(0, prefix.size(), prefix) == 0;
                   bool has_suffix =
-                        name.size() >= suffix.size() &&
-                        name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0;
+                      name.size() >= suffix.size() &&
+                      name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0;
                   if (has_prefix && has_suffix)
                         out.push_back(entry.path().string());
             }
             return out;
       }
 
-      void write_split_shards(const std::string &out_dir,
-                              const std::string &split_name,
-                              const std::vector<int> &ids,
-                              uint64_t shard_size_tokens) const
+      void write_split_shards(const std::string &out_dir, const std::string &split_name,
+                              const std::vector<int> &ids, uint64_t shard_size_tokens) const
       {
             uint64_t total = ids.size();
             uint64_t shard_idx = 0;
@@ -643,10 +612,7 @@ struct DataLoader
                   uint64_t count = std::min(shard_size_tokens, total - offset);
 
                   char name_buf[64];
-                  std::snprintf(name_buf,
-                                sizeof(name_buf),
-                                "%s_%06llu.bin",
-                                split_name.c_str(),
+                  std::snprintf(name_buf, sizeof(name_buf), "%s_%06llu.bin", split_name.c_str(),
                                 (unsigned long long)shard_idx);
 
                   std::string path = (fs::path(out_dir) / name_buf).string();
@@ -658,7 +624,7 @@ struct DataLoader
                   int32_t header[SHARD_HEADER_INTS] = {0};
                   header[0] = SHARD_MAGIC;
                   header[1] = SHARD_VERSION;
-                  header[2] = 0; // dtype: 0 = uint16
+                  header[2] = 0;
                   header[3] = (int32_t)(uint32_t)(count & 0xFFFFFFFFull);
                   header[4] = (int32_t)(uint32_t)(count >> 32);
                   f.write(reinterpret_cast<const char *>(header), sizeof(header));
@@ -672,8 +638,7 @@ struct DataLoader
       }
 
       std::pair<std::vector<int>, std::vector<int>> get_batch_text(const std::string &split,
-                                                                   int batch_size,
-                                                                   int block_size,
+                                                                   int batch_size, int block_size,
                                                                    std::mt19937 &rng) const
       {
             const std::vector<int> &d = (split == "train") ? train_data : val_data;
@@ -700,11 +665,6 @@ struct DataLoader
             return {x, y};
       }
 
-      // sherd-mode batch sampling
-      // Samples a global offset over the virtual concatenation of shards.
-      // Fast path: the whole block lives inside one shard -> direct mmap
-      // pointer reads. Rare path (block straddles a shard boundary):
-      // falls back to a per-token lookup via the prefix-sum index.
       std::pair<std::vector<int>, std::vector<int>> get_batch_sharded(const std::string &split,
                                                                       int batch_size,
                                                                       int block_size,
@@ -732,7 +692,6 @@ struct DataLoader
 
                   if (local + (uint64_t)block_size + 1 <= shard.num_tokens)
                   {
-                        // Fast path: contiguous within one shard.
                         for (int t = 0; t < block_size; ++t)
                         {
                               x[b * block_size + t] = (int)shard.data[local + t];
@@ -741,7 +700,6 @@ struct DataLoader
                   }
                   else
                   {
-                        // Rare path: crosses a shard boundary.
                         for (int t = 0; t < block_size; ++t)
                         {
                               x[b * block_size + t] = s.token_at(start + t);
@@ -791,7 +749,7 @@ struct DataLoader
                   nodes[i] = {ids[i], i - 1, i + 1, 1};
             nodes[n - 1].next = -1;
 
-            using PQItem = std::pair<int, int>; // {rank, left_index}
+            using PQItem = std::pair<int, int>;
             std::priority_queue<PQItem, std::vector<PQItem>, std::greater<PQItem>> pq;
 
             auto try_enqueue = [&](int left_idx)
@@ -899,11 +857,8 @@ struct DataLoader
                   uint64_t best_key = 0;
                   size_t max_count = 0;
 
-                  // Refactored from C++17 structured binding to ensure cross-compiler compatibility
-                  for (const auto &kv : pair_pos)
+                  for (const auto &[key, pos_vec] : pair_pos)
                   {
-                        uint64_t key = kv.first;
-                        const auto &pos_vec = kv.second;
                         if (pos_vec.size() > max_count)
                         {
                               max_count = pos_vec.size();
@@ -953,7 +908,7 @@ struct DataLoader
                         if (next_next_node != -1 && list[next_next_node].active)
                         {
                               uint64_t new_right_key =
-                                    make_pair_key(new_id, list[next_next_node].id);
+                                  make_pair_key(new_id, list[next_next_node].id);
                               pair_pos[new_right_key].push_back(head);
                         }
                   }
