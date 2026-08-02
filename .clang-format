@@ -1,42 +1,29 @@
 ---
-# Clang-Format Configuration File
-# ----------------------------------------------------
-BasedOnStyle: LLVM
 Language: Cpp
+BasedOnStyle: LLVM
 
-# Indentation and Tab Settings
+# Indentation and Spacing
 IndentWidth: 6
-UseTab: Never
 TabWidth: 6
-ContinuationIndentWidth: 6
+UseTab: Never
+ContinueIndentWidth: 6
 
-# Brace Wrapping
+# Brace Placement (Allman style: opening braces on new line)
 BreakBeforeBraces: Allman
 
-# Formatting Geometry & Constraints
+# Column Width Limit
 ColumnLimit: 100
-PointerAlignment: Right
-ReferenceAlignment: Right
 
-# Include Management
-SortIncludes: CaseInsensitive
-IncludeBlocks: Regroup
-# Spacing rules
-SpaceBeforeParens: ControlStatements
-SpaceAfterCStyleCast: false
+# Include Sorting
+SortIncludes: true
+
+# Pointer and Reference Alignment
+DerivePointerAlignment: false
+PointerAlignment: Right
+
+# Spaces
+SpaceBeforeCppLambdaBrackets: true
 SpaceBeforeAssignmentOperators: true
-SpaceInEmptyBlock: false
-BreakConstructorInitializers: BeforeColon
-ConstructorInitializerIndentWidth: 6
-AllowAllArgumentsOnNextLine: false
-AllowAllParametersOfDeclarationOnNextLine: false
-BinPackArguments: false
-BinPackParameters: false
-AllowShortIfStatementsOnASingleLine: Never
-AllowShortLoopsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: Empty
-AllowShortBlocksOnASingleLine: Empty
-# Braced initializer list formatting (e.g. vector/array initialization)
-Cpp11BracedListStyle: true
-SpacesInAngles: Never
-...
+SpacesInAngles: false
+SpacesInContainerLiterals: false
+---
