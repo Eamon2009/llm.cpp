@@ -609,8 +609,9 @@ struct DataLoader
             uint64_t shard_idx = 0;
             for (uint64_t offset = 0; offset < total; offset += shard_size_tokens, ++shard_idx)
             {
-                  uint64_t count = std::min(shard_size_tokens, total - offset);
-
+                  uint64_t count =
+                      (std::min)(shard_size_tokens,
+                                 std::min<uint64_t>(shard_size_tokens, total - offset));
                   char name_buf[64];
                   std::snprintf(name_buf, sizeof(name_buf), "%s_%06llu.bin", split_name.c_str(),
                                 (unsigned long long)shard_idx);
