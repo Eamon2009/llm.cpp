@@ -365,6 +365,8 @@ I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-fre
 - Meta AI, ["The Llama 3 Herd of Models"](https://arxiv.org/abs/2407.21783) (Llama 3 paper), 2024
 - Andrej Karpathy, [nanoGPT](https://github.com/karpathy/nanoGPT) repository as an educational reference point
 - [HuggingFace Datasets](https://huggingface.co/datasets) for FineWeb and other pretraining/fine-tuning datasets
+-  **Karpathy, A.** (2024). [*Let's reproduce GPT-2 (124M)*](https://youtu.be/l8pRSuU81PU)
+- *Note: We express our thanks to Andrej Karpathy for his instructional content. Concepts regarding the multi-head attention structure, learning rate schedule, and binary token shard loading were implemented using his walkthrough.*
 
 ## Cite
 
