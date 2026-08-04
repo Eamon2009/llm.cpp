@@ -252,23 +252,6 @@ static const float DROPOUT = 0.05f;
 static const int BPE_VOCAB_SIZE = 2048; 
 ```
 
-
-## the PyTorch reference path
-
-[engine/main.py](engine/main.py) trains the same architectural idea with `torch`, `torch.nn`, and GPT-4 BPE tokenization via `tiktoken`, useful when you want to scale past what C++ loops can comfortably train on CPU.
-
-```bash
-cd engine
-python fineweb_dataset.py # you can also use data/input.txt also 
-python main.py
-```
-
-It looks for `engine/input.txt` by default; point it elsewhere with `QUADTRIX_TRAIN_DATA` if needed. Run inference against a saved checkpoint:
-
-```bash
-python engine/inference.py --checkpoint engine/best_model.pt --prompt "Once upon a time" --max-new-tokens 100
-```
-
 ## Benchmarks
 ### Runs at a Glance
 
@@ -294,7 +277,7 @@ See [run.md](run.md) and the leaderboard in the full docs for more configuration
 |---|---|---|---|
 | nanoGPT / minGPT | Minimal, educational GPT training | Python | PyTorch |
 | llama2.c | Inference-only | C | None |
-| **llm.cpp** | Training *and* inference, manual backward pass | C++ / Python | Manual (C++) + PyTorch |
+| **llm.cpp** | Training *and* inference, manual backward pass | C++  | C++ |
 
 I'd like the C++ core (`main.cpp`, `include/`, `config/`) to stay dependency-free and to stay the part of this repo that explin transformer internals directly. The PyTorch engine, include, and ci are welcome to grow more features, integrations, and CI polish. If you build a port to another language or framework, I'm happy to link to it from a notable-forks section; just open an issue or PR.
 
