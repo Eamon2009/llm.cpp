@@ -25,7 +25,7 @@ The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU trai
 | 9 | 76.2 min | 1.6371 | 0.82M (CPU) | Jan 2026 | @Eamon2009 |
 
 More broadly, the primary contribution of this work lies in its absolute transparency. Every gradient in the backward pass is explicitly written and readable, and every tensor operation is a standard C++ function. By exposing exactly what frameworks like PyTorch compute under the hood, this implementation provides a clear educational pathway. We believe that this fundamental understanding is the true foundation of genuine expertise in deep learning.
-Alongside it sits a parallel PyTorch implementation in [engine/main.py](engine/cpu/main.py) and [engine/inference.py](engine/cpu/inference.py), so you can train and generate the same architecture with `torch` + `tiktoken` when you want speed instead of transparency. There's also an option to train using multiple GPUs [distributed/](engine//distributed/). The point of this repo is the C++ core. The PyTorch exist to make the model usable, but if you're here to ***train a GPT without a framework*** doing the work for you, [include/backward.h](include/backward.h) is where to start seeing optimization without torch.
+The point of this repo is the C++ core. The PyTorch exist to make the model usable, but if you're here to ***train a GPT without a framework*** doing the work for you, [include/backward.h](include/backward.h) is where to start seeing optimization without torch.
 
 ---
 
