@@ -163,7 +163,7 @@ This trains from scratch on `data/input.txt` and writes the best checkpoint to `
 ./llm.exe data/input.txt --chat --chat-tokens 300
 ```
 
-debugging tip: drop `-O2` for `-g` when compiling if you want to step through `include/backward.h` or `include/gpt.h` in a debugger — the manual backward pass is much easier to follow one breakpoint at a time.
+debugging tip: drop `-O2` for `-g` when compiling if you want to step through `include/backward.h` or `include/gpt.h` in a debugger - the manual backward pass is much easier to follow one breakpoint at a time.
 
 ### runtime arguments
 
