@@ -1,8 +1,4 @@
 #pragma once
-// ============================================================
-//  include/attention.h  –  Causal self-attention
-//  Mirrors: class Head and class MultiHeadAttention in Python
-// ============================================================
 
 #include "config/config.h"
 #include "linear.h"
@@ -11,13 +7,14 @@
 #include <fstream>
 #include <vector>
 
-// ------------------------------------------------------------------
-// Single causal attention head
-// ------------------------------------------------------------------
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 struct Head
 {
       int head_size;
-      Linear key, query, value; // each [n_embd head_size], no bias
+      Linear key, query, value;
 
       Head() = default;
 
@@ -27,7 +24,6 @@ struct Head
       {
       }
 
-      // x: [B, T, n_embd]   [B, T, head_size]
       Tensor forward(const Tensor &x, bool training, std::mt19937 &rng) const
       {
             int B = x.shape[0], T = x.shape[1];
@@ -41,20 +37,27 @@ struct Head
             Tensor kt = transpose23(k); // [B, hs, T]
             Tensor wei = bmm(q, kt);    // [B, T, T]
 
-            // mask upper triangle -inf
+            // Parallelized causal mask application for all CPU cores
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) if (B * T * T > 10000)
+#endif
             for (int b = 0; b < B; ++b)
+            {
                   for (int i = 0; i < T; ++i)
+                  {
                         for (int j = i + 1; j < T; ++j)
+                        {
                               wei.at(b, i, j) = -1e30f;
+                        }
+                  }
+            }
 
-            // scale then softmax
-            wei = scale3d_inplace(wei, scale);
+            // scale then softmax (using move semantics)
+            wei = scale3d_inplace(std::move(wei), scale);
             wei = softmax3d(wei);
 
             // dropout on attention weights
             wei = dropout(wei, DROPOUT, training, rng);
-
-            // wei @ v   [B, T, hs]
             return bmm(wei, v);
       }
 
@@ -77,11 +80,16 @@ struct Head
       }
 
     private:
-      static Tensor scale3d_inplace(Tensor t, float s)
+      static Tensor scale3d_inplace(Tensor &&t, float s)
       {
-            for (auto &v : t.data)
-                  v *= s;
-            return t;
+#ifdef _OPENMP
+#pragma omp parallel for if (t.data.size() > 10000)
+#endif
+            for (size_t i = 0; i < t.data.size(); ++i)
+            {
+                  t.data[i] *= s;
+            }
+            return std::move(t);
       }
 };
 
@@ -101,13 +109,16 @@ struct MultiHeadAttention
                   heads.emplace_back(n_embd_, hs, rng);
       }
 
-      // x: [B, T, n_embd] to  [B, T, n_embd]
       Tensor forward(const Tensor &x, bool training, std::mt19937 &rng) const
       {
-            std::vector<Tensor> head_outs;
-            head_outs.reserve(num_heads);
-            for (auto &h : heads)
-                  head_outs.push_back(h.forward(x, training, rng));
+            std::vector<Tensor> head_outs(num_heads);
+
+            // Sequential across heads to keep std::mt19937 thread-safe,
+            // while underlying tensor operations utilize OpenMP multi-core execution.
+            for (int i = 0; i < num_heads; ++i)
+            {
+                  head_outs[i] = heads[i].forward(x, training, rng);
+            }
 
             Tensor concat = cat_last(head_outs); // [B, T, num_heads*hs]
             Tensor out = proj.forward(concat);   // [B, T, n_embd]
