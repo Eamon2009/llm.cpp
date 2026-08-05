@@ -3,8 +3,7 @@
 <h1 align="center">
   <img width="1942" height="700" alt="llm-cpp-lmgnu" src="https://github.com/user-attachments/assets/eca0f789-395f-4457-a867-684b428f6963" />
 
-[![Release](https://img.shields.io/github/v/release/LMGNU/llm.cpp)](https://github.com/LMGNU/llm.cpp/releases) [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0) [![CI Approval](https://img.shields.io/badge/CI%20Approval-approved-orange?logo=githubactions)](...)  [![LMGNU](https://img.shields.io/badge/LMGNU-powered-56D1A0?logo=https%3A%2F%2Fraw.githubusercontent.com%2FLMGNU%2F.github%2Fmain%2Fprofile%2Fdragon_logo.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml) [![Docker Images](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/docker-publish.yml) 
-
+[![LMGNU](https://img.shields.io/badge/LMGNU-powered-56D1A0?logo=https%3A%2F%2Fraw.githubusercontent.com%2FLMGNU%2F.github%2Fmain%2Fprofile%2Fdragon_logo.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml) [![Release](https://img.shields.io/github/v/release/LMGNU/llm.cpp)](https://github.com/LMGNU/llm.cpp/releases) [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0) 
 </h1>
 
 
