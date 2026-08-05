@@ -40,6 +40,74 @@ model->to(torch::kCUDA)
 which transfers all parameters to GPU memory; all subsequent `torch::matmul` calls dispatch to cuBLAS automatically.
 ***technical notes***: [docs](https://eamon2009.github.io/LLMs/)
 
+```mermaid
+graph TD
+    %% Base styling matching the dark UI theme from the image
+    classDef default fill:#2b2b2b,stroke:#888,stroke-width:1px,color:#fff;
+    classDef nodeBox fill:#262626,stroke:#777,stroke-width:1.5px;
+    classDef group fill:#404040,stroke:#666,stroke-width:1px,color:#fff;
+
+    %% 1. Application Start
+    MAIN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>main.cpp</span><br/><span style='font-size:12px;color:#d1d1d1'>Application Execution</span>"]:::nodeBox
+
+    %% 2. Initialization & Data Setup
+    TOKEN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>tokenizer.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Text to Token IDs</span>"]:::nodeBox
+    
+    TENSOR["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>tensor.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Memory Alloc & Math Base</span>"]:::nodeBox
+
+    MAIN --> TOKEN
+    MAIN --> TENSOR
+    TOKEN --> MODEL
+
+    %% 3. Model Orchestration
+    MODEL["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>gpt.h / lm.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Model Orchestration</span>"]:::nodeBox
+    TENSOR -.-> MODEL
+
+    %% 4. Forward Pass Group
+    subgraph Forward [Forward Pass]
+        direction TB
+        EMBED["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>embedding.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Token -> Vectors</span>"]:::nodeBox
+        
+        BLOCK["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>block.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Transformer Layer Map</span>"]:::nodeBox
+        
+        NORM["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>layernorm.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Pre-Normalization</span>"]:::nodeBox
+        
+        ATTN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>attention.h</span><br/><span style='font-size:12px;color:#d1d1d1'>QKV & Self-Attention</span>"]:::nodeBox
+        
+        LIN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>linear.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Linear Projections</span>"]:::nodeBox
+        
+        FFN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>feedforward.h</span><br/><span style='font-size:12px;color:#d1d1d1'>MLP / Activation</span>"]:::nodeBox
+
+        EMBED --> BLOCK
+        BLOCK --> NORM
+        NORM --> ATTN
+        ATTN --> LIN
+        LIN --> FFN
+    end
+    
+    class Forward group;
+
+    MODEL --> EMBED
+
+    %% 5. Output / Inference Split
+    SAMPLER["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>sampler.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Logits -> Generate Text</span>"]:::nodeBox
+    
+    FFN --> SAMPLER
+
+    %% 6. Backward Pass / Training Split
+    subgraph Training [Gradients & Training]
+        direction TB
+        BACKWARD["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>backward.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Gradient Flow (Backprop)</span>"]:::nodeBox
+        
+        BRIDGE["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>torch_bridge.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Weight / Grad Sync</span>"]:::nodeBox
+        
+        BACKWARD -.-> BRIDGE
+    end
+
+    class Training group;
+
+    FFN --> BACKWARD
+```
 ---
 
 ## quick start (CPU)
