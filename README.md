@@ -42,71 +42,63 @@ which transfers all parameters to GPU memory; all subsequent `torch::matmul` cal
 
 ```mermaid
 graph TD
-    %% Base styling matching the dark UI theme from the image
-    classDef default fill:#2b2b2b,stroke:#888,stroke-width:1px,color:#fff;
-    classDef nodeBox fill:#262626,stroke:#777,stroke-width:1.5px;
-    classDef group fill:#404040,stroke:#666,stroke-width:1px,color:#fff;
+    %% Premium Dark Theme Styling (VS Code Inspired)
+    classDef default fill:#1e1e1e,stroke:#444,stroke-width:1px,color:#ccc;
+    classDef setup fill:#252526,stroke:#4ec9b0,stroke-width:2px,color:#fff;
+    classDef model fill:#252526,stroke:#c586c0,stroke-width:2px,color:#fff;
+    classDef math fill:#252526,stroke:#ce9178,stroke-width:2px,color:#fff;
+    classDef train fill:#2d221e,stroke:#d7ba7d,stroke-width:2px,color:#fff;
+    classDef boxGroup fill:#2d2d30,stroke:#555,stroke-width:1px,color:#e0e0e0,rx:8px,ry:8px;
+    classDef trainGroup fill:#332a1e,stroke:#cc8800,stroke-width:1.5px,color:#ffd700,rx:8px,ry:8px;
 
-    %% 1. Application Start
-    MAIN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>main.cpp</span><br/><span style='font-size:12px;color:#d1d1d1'>Application Execution</span>"]:::nodeBox
-
-    %% 2. Initialization & Data Setup
-    TOKEN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>tokenizer.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Text to Token IDs</span>"]:::nodeBox
+    %% 1. Application Entry
+    MAIN("<b><span style='color:#569cd6;font-size:16px'>main.cpp</span></b><br/><span style='font-size:12px;color:#9cdcfe'>App Execution</span>"):::setup
     
-    TENSOR["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>tensor.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Memory Alloc & Math Base</span>"]:::nodeBox
-
+    %% 2. Initialization Setup
+    subgraph Init [Memory & Token Setup]
+        direction LR
+        TOKEN("<b><span style='color:#4ec9b0;font-size:14px'>tokenizer.h</span></b><br/><span style='font-size:11px;color:#d4d4d4'>String -> Token IDs</span>"):::setup
+        TENSOR("<b><span style='color:#4ec9b0;font-size:14px'>tensor.h</span></b><br/><span style='font-size:11px;color:#d4d4d4'>Math & Memory Base</span>"):::setup
+    end
+    class Init boxGroup;
+    
     MAIN --> TOKEN
     MAIN --> TENSOR
-    TOKEN --> MODEL
-
+    
     %% 3. Model Orchestration
-    MODEL["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>gpt.h / lm.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Model Orchestration</span>"]:::nodeBox
-    TENSOR -.-> MODEL
-
-    %% 4. Forward Pass Group
-    subgraph Forward [Forward Pass]
-        direction TB
-        EMBED["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>embedding.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Token -> Vectors</span>"]:::nodeBox
-        
-        BLOCK["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>block.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Transformer Layer Map</span>"]:::nodeBox
-        
-        NORM["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>layernorm.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Pre-Normalization</span>"]:::nodeBox
-        
-        ATTN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>attention.h</span><br/><span style='font-size:12px;color:#d1d1d1'>QKV & Self-Attention</span>"]:::nodeBox
-        
-        LIN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>linear.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Linear Projections</span>"]:::nodeBox
-        
-        FFN["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>feedforward.h</span><br/><span style='font-size:12px;color:#d1d1d1'>MLP / Activation</span>"]:::nodeBox
-
-        EMBED --> BLOCK
-        BLOCK --> NORM
-        NORM --> ATTN
-        ATTN --> LIN
-        LIN --> FFN
-    end
+    MODEL("<b><span style='color:#c586c0;font-size:16px'>gpt.h / lm.h</span></b><br/><span style='font-size:12px;color:#d4d4d4'>Network Architecture Config</span>"):::model
     
-    class Forward group;
+    TOKEN --> MODEL
+    TENSOR --> MODEL
+    
+    %% 4. The Pipeline (Forward Pass)
+    subgraph Forward [Transformer Forward Pass]
+        direction LR
+        EMBED("<span style='color:#ce9178;font-weight:bold'>embedding.h</span>"):::math
+        BLOCK("<span style='color:#ce9178;font-weight:bold'>block.h</span>"):::math
+        NORM("<span style='color:#ce9178;font-weight:bold'>layernorm.h</span>"):::math
+        ATTN("<span style='color:#ce9178;font-weight:bold'>attention.h</span>"):::math
+        LIN("<span style='color:#ce9178;font-weight:bold'>linear.h</span>"):::math
+        FFN("<span style='color:#ce9178;font-weight:bold'>feedforward.h</span>"):::math
 
+        EMBED ==> BLOCK ==> NORM ==> ATTN ==> LIN ==> FFN
+    end
+    class Forward boxGroup;
+    
     MODEL --> EMBED
-
-    %% 5. Output / Inference Split
-    SAMPLER["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>sampler.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Logits -> Generate Text</span>"]:::nodeBox
     
-    FFN --> SAMPLER
-
-    %% 6. Backward Pass / Training Split
-    subgraph Training [Gradients & Training]
-        direction TB
-        BACKWARD["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>backward.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Gradient Flow (Backprop)</span>"]:::nodeBox
+    %% 5. Training & Checkpointing
+    subgraph Training [Backpropagation & Checkpointing]
+        direction LR
+        BACKWARD("<b><span style='color:#d7ba7d;font-size:15px'>backward.h</span></b><br/><span style='font-size:11px;color:#d4d4d4'>Compute Gradients</span>"):::train
+        MODEL_BIN("<b><span style='color:#4ec9b0;font-size:15px'>best_model.bin</span></b><br/><span style='font-size:11px;color:#d4d4d4'>Save Trained Checkpoint</span>"):::train
         
-        BRIDGE["<span style='color:#4ea9ff;font-weight:bold;font-size:16px'>torch_bridge.h</span><br/><span style='font-size:12px;color:#d1d1d1'>Weight / Grad Sync</span>"]:::nodeBox
-        
-        BACKWARD -.-> BRIDGE
+        BACKWARD -.->|Save Checkpoint| MODEL_BIN
     end
-
-    class Training group;
-
-    FFN --> BACKWARD
+    class Training trainGroup;
+    
+    %% Output to Training
+    FFN ==>|Loss & Gradients Flow| BACKWARD
 ```
 ---
 
