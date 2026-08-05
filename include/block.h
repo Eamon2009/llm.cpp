@@ -1,4 +1,10 @@
 #pragma once
+// ============================================================
+//  include/block.h  –  Single Transformer block
+//  Mirrors: class Block in Python
+//  Architecture: pre-LN - MHA - residual -pre-LN - FFN -residual
+// ============================================================
+
 #include "attention.h"
 #include "feedforward.h"
 #include "layernorm.h"
@@ -19,7 +25,7 @@ struct Block
       {
       }
 
-      // x: [B, T, n_embd]   [B, T, n_embd]
+      // x: [B, T, n_embd]  →  [B, T, n_embd]
       Tensor forward(const Tensor &x, bool training, std::mt19937 &rng) const
       {
             // x = x + sa(ln1(x))
