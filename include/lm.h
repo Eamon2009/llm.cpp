@@ -45,12 +45,9 @@ struct AdamW
       std::vector<int> sizes;
       std::vector<std::vector<float>> m, v;
 
-      AdamW(float lr_ = 3e-4f,
-            float beta1_ = 0.9f,
-            float beta2_ = 0.999f,
-            float eps_ = 1e-8f,
+      AdamW(float lr_ = 3e-4f, float beta1_ = 0.9f, float beta2_ = 0.999f, float eps_ = 1e-8f,
             float wd = 0.0f)
-            : lr(lr_), beta1(beta1_), beta2(beta2_), eps(eps_), weight_decay(wd), step_count(0)
+          : lr(lr_), beta1(beta1_), beta2(beta2_), eps(eps_), weight_decay(wd), step_count(0)
       {
       }
 
@@ -99,9 +96,9 @@ struct GPTLanguageModel
       Linear lm_head;
 
       GPTLanguageModel(int vocab, int embd, int heads, int layers, int blk_sz, unsigned int seed)
-            : vocab_size(vocab), n_embd(embd), n_head(heads), n_layer(layers), block_size(blk_sz),
-              rng(seed), token_emb(vocab, embd, rng), pos_emb(blk_sz, embd, rng), ln_f(embd),
-              lm_head(embd, vocab, true, rng)
+          : vocab_size(vocab), n_embd(embd), n_head(heads), n_layer(layers), block_size(blk_sz),
+            rng(seed), token_emb(vocab, embd, rng), pos_emb(blk_sz, embd, rng), ln_f(embd),
+            lm_head(embd, vocab, true, rng)
       {
             for (int i = 0; i < layers; ++i)
                   blocks.emplace_back(embd, heads, rng);
@@ -122,11 +119,8 @@ struct GPTLanguageModel
       // targets : flat list of B times T next-token indices (empty means inference only)
       // training: enables dropout when true
       // returns : logits of shape BT by vocab, and scalar loss (0 when no targets)
-      std::pair<Tensor, float> forward(const std::vector<int> &idx,
-                                       int B,
-                                       int T,
-                                       const std::vector<int> &targets,
-                                       bool training)
+      std::pair<Tensor, float> forward(const std::vector<int> &idx, int B, int T,
+                                       const std::vector<int> &targets, bool training)
       {
             Tensor tok = token_emb.forward(idx, B, T);
             Tensor pos = pos_emb.forward_pos(T);
@@ -160,8 +154,7 @@ struct GPTLanguageModel
       // Repetition penalty from params is applied to raw logits before softmax
       // so that tokens seen recently in the window are less likely to repeat.
       // params defaults to config.h values when not provided.
-      std::vector<int> generate(std::vector<int> context,
-                                int max_new_tokens,
+      std::vector<int> generate(std::vector<int> context, int max_new_tokens,
                                 const SamplerParams &params = SamplerParams())
       {
             std::uniform_real_distribution<float> udist(0.0f, 1.0f);
@@ -227,7 +220,6 @@ struct GPTLanguageModel
                   b.save(f);
             ln_f.save(f);
             lm_head.save(f);
-            std::cout << "[SAVE]  Weights written to " << path << "\n";
       }
 
       // Read all weights from a binary file in the same layer order as save.
