@@ -1,27 +1,24 @@
 #pragma once
-// ============================================================
-//  include/feedforward.h  –  Position-wise feed-forward network
-//  Mirrors: class FeedFoward in Python
-//  Architecture: Linear → ReLU → Linear → Dropout
-// ============================================================
 
-#include "tensor.h"
-#include "linear.h"
 #include "config/config.h"
+#include "linear.h"
+#include "tensor.h"
+
 #include <fstream>
 
 struct FeedForward
 {
-      Linear fc1; // n_embd  → 4*n_embd
-      Linear fc2; // 4*n_embd → n_embd
+      Linear fc1; // n_embd  4*n_embd
+      Linear fc2; // 4*n_embd n_embd
 
       FeedForward() = default;
 
       FeedForward(int n_embd, std::mt19937 &rng)
-          : fc1(n_embd, 4 * n_embd, true, rng),
-            fc2(4 * n_embd, n_embd, true, rng) {}
+            : fc1(n_embd, 4 * n_embd, true, rng), fc2(4 * n_embd, n_embd, true, rng)
+      {
+      }
 
-      // x: [B, T, n_embd]  →  [B, T, n_embd]
+      // x: [B, T, n_embd]   [B, T, n_embd]
       Tensor forward(const Tensor &x, bool training, std::mt19937 &rng) const
       {
             Tensor h = fc1.forward(x); // [B, T, 4*n_embd]
