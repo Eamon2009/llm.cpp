@@ -50,9 +50,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          clang++ -std=c++17 -O3 -march=native -Xpreprocessor -fopenmp -DNDEBUG -arch arm64 \
+          g++ -std=c++17 -O3 -march=native -fopenmp -DNDEBUG -arch arm64 \
             -I. -Iinclude \
-            -o llm main.cpp -lomp
+            -o llm main.cpp -Xpreprocessor -fopenmp -lomp
           file llm
 
       - name: Pack artifacts
@@ -69,103 +69,6 @@ jobs:
         with:
           name: llm.cpp-bin-macos-arm64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
-  macos-x64-cpu:
-    name: macOS Intel (x64) CPU
-    needs: release-metadata
-    runs-on: macos-13
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install OpenMP
-        run: brew install libomp
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          clang++ -std=c++17 -O3 -march=native -Xpreprocessor -fopenmp -DNDEBUG -arch x86_64 \
-            -I. -Iinclude \
-            -o llm main.cpp -lomp
-          file llm
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-macos-x64-cpu
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
-  ios-xcframework:
-    name: iOS XCFramework
-    needs: release-metadata
-    runs-on: macos-14
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Build for iOS (arm64)
-        shell: bash
-        run: |
-          set -euo pipefail
-          clang++ -std=c++17 -O3 -DNDEBUG \
-            -arch arm64 \
-            -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk \
-            -I. -Iinclude \
-            -c main.cpp -o llm-ios-arm64.o
-          ar rcs libllm-ios-arm64.a llm-ios-arm64.o
-
-      - name: Build for iOS Simulator (x86_64)
-        shell: bash
-        run: |
-          set -euo pipefail
-          clang++ -std=c++17 -O3 -DNDEBUG \
-            -arch x86_64 \
-            -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk \
-            -I. -Iinclude \
-            -c main.cpp -o llm-ios-sim-x86_64.o
-          ar rcs libllm-ios-sim-x86_64.a llm-ios-sim-x86_64.o
-
-      - name: Create XCFramework
-        shell: bash
-        run: |
-          set -euo pipefail
-          xcodebuild -create-xcframework \
-            -library libllm-ios-arm64.a \
-            -library libllm-ios-sim-x86_64.a \
-            -output LLM.xcframework
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp -r LLM.xcframework README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-ios-xcframework
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz
           if-no-files-found: error
           retention-days: 30
 
@@ -189,9 +92,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          g++ -std=c++17 -O3 -march=native -fopenmp -DNDEBUG \
-            -I. -Iinclude \
-            -o llm main.cpp
+          g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm main.cpp
           file llm
 
       - name: Pack artifacts
@@ -208,48 +109,6 @@ jobs:
         with:
           name: llm.cpp-bin-ubuntu-x64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cpu.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
-  ubuntu-x86-cpu:
-    name: Ubuntu x86 (32-bit CPU)
-    needs: release-metadata
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential file gcc-multilib g++-multilib
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          g++ -m32 -std=c++17 -O3 -march=native -fopenmp -DNDEBUG \
-            -I. -Iinclude \
-            -o llm main.cpp
-          file llm
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x86-cpu"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-ubuntu-x86-cpu
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x86-cpu.tar.gz
           if-no-files-found: error
           retention-days: 30
 
@@ -275,9 +134,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ${CXX:-g++} -std=c++17 -O3 -march=native -fopenmp -DNDEBUG \
-            -I. -Iinclude \
-            -o llm main.cpp
+          ${CXX:-g++} -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm main.cpp
           file llm
 
       - name: Pack artifacts
@@ -297,183 +154,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  ubuntu-x64-vulkan:
-    name: Ubuntu x64 (Vulkan)
-    needs: release-metadata
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential file libvulkan-dev vulkan-tools
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          g++ -std=c++17 -O3 -march=native -fopenmp -DNDEBUG -DENABLE_VULKAN \
-            -I. -Iinclude \
-            -o llm main.cpp -lvulkan
-          file llm
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-ubuntu-x64-vulkan
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
-  ubuntu-arm64-vulkan:
-    name: Ubuntu arm64 (Vulkan)
-    needs: release-metadata
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Dependencies
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential file libvulkan-dev vulkan-tools gcc-14 g++-14
-          echo "CC=gcc-14" >> "$GITHUB_ENV"
-          echo "CXX=g++-14" >> "$GITHUB_ENV"
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          ${CXX:-g++} -std=c++17 -O3 -march=native -fopenmp -DNDEBUG -DENABLE_VULKAN \
-            -I. -Iinclude \
-            -o llm main.cpp -lvulkan
-          file llm
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-ubuntu-arm64-vulkan
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
-  wasm-emscripten:
-    name: WebAssembly (Emscripten)
-    needs: release-metadata
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          emcc -std=c++17 -O3 -fopenmp -DNDEBUG \
-            -I. -Iinclude \
-            -o llm.js main.cpp \
-            -s WASM=1 -s ALLOW_MEMORY_GROWTH=1
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-wasm"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm.js llm.wasm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-wasm
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-wasm.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
-  android-arm64-cpu:
-    name: Android arm64 (CPU)
-    needs: release-metadata
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Android NDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y build-essential file
-          mkdir -p /opt/android
-          cd /opt/android
-          wget https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
-          unzip -q android-ndk-r26b-linux.zip
-          echo "ANDROID_NDK_HOME=/opt/android/android-ndk-r26b" >> $GITHUB_ENV
-
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ \
-            --target=aarch64-linux-android21 \
-            -std=c++17 -O3 -fopenmp -DNDEBUG \
-            -I. -Iinclude \
-            -o llm main.cpp
-          file llm
-
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-android-arm64-cpu
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
-  windows-x64-mingw:
-    name: Windows x64 (GCC MinGW)
+  windows-x64-cpu:
+    name: Windows x64 (CPU)
     needs: release-metadata
     runs-on: windows-2022
     steps:
@@ -482,7 +164,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup MSYS2
+      - name: Setup MSYS2 and MinGW GCC
         uses: msys2/setup-msys2@v2
         with:
           update: true
@@ -494,39 +176,6 @@ jobs:
         shell: msys2 {0}
         run: |
           g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
-
-      - name: Pack artifacts
-        shell: pwsh
-        run: |
-          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-mingw"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-windows-x64-mingw
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-mingw.zip
-          if-no-files-found: error
-          retention-days: 30
-
-  windows-x64-cpu:
-    name: Windows x64 (MSVC CPU)
-    needs: release-metadata
-    runs-on: windows-2022
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Build
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cl /nologo /std:c++17 /O2 /openmp /DNDEBUG /EHsc /Iinclude /I. main.cpp /Fe:llm.exe
 
       - name: Pack artifacts
         shell: pwsh
@@ -545,56 +194,14 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  windows-arm64-cpu:
-    name: Windows arm64 (MSVC CPU)
-    needs: release-metadata
-    runs-on: windows-2022
-    steps:
-      - name: Clone
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Build
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64_arm64
-          cl /nologo /std:c++17 /O2 /openmp /DNDEBUG /EHsc /Iinclude /I. main.cpp /Fe:llm.exe
-
-      - name: Pack artifacts
-        shell: pwsh
-        run: |
-          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-windows-arm64-cpu
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu.zip
-          if-no-files-found: error
-          retention-days: 30
-
   publish-release:
     name: Publish GitHub release
     needs:
       - release-metadata
       - macos-arm64-cpu
-      - macos-x64-cpu
-      - ios-xcframework
       - ubuntu-x64-cpu
-      - ubuntu-x86-cpu
       - ubuntu-arm64-cpu
-      - ubuntu-x64-vulkan
-      - ubuntu-arm64-vulkan
-      - wasm-emscripten
-      - android-arm64-cpu
-      - windows-x64-mingw
       - windows-x64-cpu
-      - windows-arm64-cpu
     if: always() && needs.release-metadata.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -612,18 +219,9 @@ jobs:
         shell: bash
         env:
           RES_MACOS_ARM: ${{ needs.macos-arm64-cpu.result }}
-          RES_MACOS_X64: ${{ needs.macos-x64-cpu.result }}
-          RES_IOS: ${{ needs.ios-xcframework.result }}
           RES_UBUNTU_X64_CPU: ${{ needs.ubuntu-x64-cpu.result }}
-          RES_UBUNTU_X86_CPU: ${{ needs.ubuntu-x86-cpu.result }}
           RES_UBUNTU_ARM_CPU: ${{ needs.ubuntu-arm64-cpu.result }}
-          RES_UBUNTU_X64_VULKAN: ${{ needs.ubuntu-x64-vulkan.result }}
-          RES_UBUNTU_ARM_VULKAN: ${{ needs.ubuntu-arm64-vulkan.result }}
-          RES_WASM: ${{ needs.wasm-emscripten.result }}
-          RES_ANDROID_ARM: ${{ needs.android-arm64-cpu.result }}
-          RES_WIN_MINGW: ${{ needs.windows-x64-mingw.result }}
           RES_WIN_X64_CPU: ${{ needs.windows-x64-cpu.result }}
-          RES_WIN_ARM_CPU: ${{ needs.windows-arm64-cpu.result }}
         run: |
           print_row() {
             local os="$1"
@@ -647,47 +245,28 @@ jobs:
             echo "## Platform Support"
             echo ""
             
-            echo "### macOS / iOS"
+            echo "### macOS"
             echo "| Platform | Architecture | Variant | Status | Download |"
             echo "|----------|--------------|---------|--------|----------|"
             print_row "macOS" "Apple Silicon (arm64)" "CPU" "$RES_MACOS_ARM" "llm.cpp-$TAG-bin-macos-arm64-cpu.tar.gz"
-            print_row "macOS" "Intel (x64)" "CPU" "$RES_MACOS_X64" "llm.cpp-$TAG-bin-macos-x64-cpu.tar.gz"
-            print_row "iOS" "arm64 / x86_64" "XCFramework" "$RES_IOS" "llm.cpp-$TAG-ios-xcframework.tar.gz"
             echo ""
             
             echo "### Linux (Ubuntu)"
             echo "| Platform | Architecture | Variant | Status | Download |"
             echo "|----------|--------------|---------|--------|----------|"
             print_row "Ubuntu" "x64" "CPU" "$RES_UBUNTU_X64_CPU" "llm.cpp-$TAG-bin-ubuntu-x64-cpu.tar.gz"
-            print_row "Ubuntu" "x86 (32-bit)" "CPU" "$RES_UBUNTU_X86_CPU" "llm.cpp-$TAG-bin-ubuntu-x86-cpu.tar.gz"
             print_row "Ubuntu" "arm64" "CPU" "$RES_UBUNTU_ARM_CPU" "llm.cpp-$TAG-bin-ubuntu-arm64-cpu.tar.gz"
-            print_row "Ubuntu" "x64" "Vulkan" "$RES_UBUNTU_X64_VULKAN" "llm.cpp-$TAG-bin-ubuntu-x64-vulkan.tar.gz"
-            print_row "Ubuntu" "arm64" "Vulkan" "$RES_UBUNTU_ARM_VULKAN" "llm.cpp-$TAG-bin-ubuntu-arm64-vulkan.tar.gz"
-            echo ""
-
-            echo "### Web"
-            echo "| Platform | Architecture | Variant | Status | Download |"
-            echo "|----------|--------------|---------|--------|----------|"
-            print_row "WebBrowser" "Wasm" "Emscripten" "$RES_WASM" "llm.cpp-$TAG-bin-wasm.tar.gz"
-            echo ""
-            
-            echo "### Android"
-            echo "| Platform | Architecture | Variant | Status | Download |"
-            echo "|----------|--------------|---------|--------|----------|"
-            print_row "Android" "arm64" "CPU" "$RES_ANDROID_ARM" "llm.cpp-$TAG-bin-android-arm64-cpu.tar.gz"
             echo ""
             
             echo "### Windows"
             echo "| Platform | Architecture | Variant | Status | Download |"
             echo "|----------|--------------|---------|--------|----------|"
-            print_row "Windows" "x64" "MinGW (GCC)" "$RES_WIN_MINGW" "llm.cpp-$TAG-bin-windows-x64-mingw.zip"
-            print_row "Windows" "x64" "MSVC CPU" "$RES_WIN_X64_CPU" "llm.cpp-$TAG-bin-windows-x64-cpu.zip"
-            print_row "Windows" "arm64" "MSVC CPU" "$RES_WIN_ARM_CPU" "llm.cpp-$TAG-bin-windows-arm64-cpu.zip"
+            print_row "Windows" "x64" "CPU" "$RES_WIN_X64_CPU" "llm.cpp-$TAG-bin-windows-x64-cpu.zip"
             echo ""
             
             echo "## Legend"
             echo "- **Built**: Successfully compiled and available for download."
-            echo "- **Failed**: Build failed during compilation or smoke testing."
+            echo "- **Failed**: Build failed during compilation or testing."
             echo "- **Skipped**: Build was bypassed or cancelled."
             echo ""
             echo "---"
