@@ -1,10 +1,6 @@
 #pragma once
-// ============================================================
-//  include/linear.h  –  Linear (fully-connected) layer
-//  Mirrors: nn.Linear(in, out, bias=True/False)
-// ============================================================
-
 #include "tensor.h"
+
 #include <fstream>
 
 struct Linear
@@ -17,14 +13,14 @@ struct Linear
       Linear() = default;
 
       Linear(int in_f, int out_f, bool use_bias, std::mt19937 &rng)
-          : in_features(in_f), out_features(out_f), has_bias(use_bias)
+            : in_features(in_f), out_features(out_f), has_bias(use_bias)
       {
             weight = Tensor::randn({in_f, out_f}, 0.0f, 0.02f, rng);
             if (has_bias)
                   bias = Tensor({out_f}, 0.0f);
       }
 
-      // forward: x [B, T, in_features]  →  [B, T, out_features]
+      // forward: x [B, T, in_features]    [B, T, out_features]
       Tensor forward(const Tensor &x) const
       {
             Tensor out = matmul(x, weight);
@@ -51,10 +47,8 @@ struct Linear
 
       void load(std::ifstream &f)
       {
-            f.read(reinterpret_cast<char *>(weight.data.data()),
-                   weight.numel() * sizeof(float));
+            f.read(reinterpret_cast<char *>(weight.data.data()), weight.numel() * sizeof(float));
             if (has_bias)
-                  f.read(reinterpret_cast<char *>(bias.data.data()),
-                         bias.numel() * sizeof(float));
+                  f.read(reinterpret_cast<char *>(bias.data.data()), bias.numel() * sizeof(float));
       }
 };
