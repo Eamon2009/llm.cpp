@@ -1,10 +1,6 @@
 #pragma once
-// ============================================================
-//  include/embedding.h  –  Lookup-table embedding
-//  Mirrors: nn.Embedding(num_embeddings, embedding_dim)
-// ============================================================
-
 #include "tensor.h"
+
 #include <fstream>
 #include <vector>
 
@@ -17,7 +13,7 @@ struct Embedding
       Embedding() = default;
 
       Embedding(int num_emb, int emb_dim, std::mt19937 &rng)
-          : num_embeddings(num_emb), embedding_dim(emb_dim)
+            : num_embeddings(num_emb), embedding_dim(emb_dim)
       {
             weight = Tensor::randn({num_emb, emb_dim}, 0.0f, 0.02f, rng);
       }
@@ -47,7 +43,10 @@ struct Embedding
             return out;
       }
 
-      int num_params() const { return weight.numel(); }
+      int num_params() const
+      {
+            return weight.numel();
+      }
 
       void save(std::ofstream &f) const
       {
@@ -56,7 +55,6 @@ struct Embedding
       }
       void load(std::ifstream &f)
       {
-            f.read(reinterpret_cast<char *>(weight.data.data()),
-                   weight.numel() * sizeof(float));
+            f.read(reinterpret_cast<char *>(weight.data.data()), weight.numel() * sizeof(float));
       }
 };
