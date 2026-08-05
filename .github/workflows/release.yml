@@ -69,7 +69,7 @@ jobs:
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-macos-arm64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu.tar.gz
@@ -127,7 +127,7 @@ jobs:
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-ios-xcframework
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz
@@ -177,7 +177,7 @@ jobs:
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cpu.tar.gz
@@ -235,7 +235,7 @@ jobs:
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-arm64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-cpu.tar.gz
@@ -285,7 +285,7 @@ jobs:
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-vulkan
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan.tar.gz
@@ -337,7 +337,7 @@ jobs:
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-arm64-vulkan
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz
@@ -393,7 +393,7 @@ jobs:
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-sycl-fp32
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32.tar.gz
@@ -449,7 +449,7 @@ jobs:
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-sycl-fp16
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz
@@ -507,7 +507,7 @@ jobs:
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-android-arm64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz
@@ -547,7 +547,7 @@ jobs:
           Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-windows-x64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cpu.zip
@@ -580,7 +580,7 @@ jobs:
           Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-windows-arm64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu.zip
@@ -621,7 +621,7 @@ jobs:
           Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-windows-x64-cuda13
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13.zip
