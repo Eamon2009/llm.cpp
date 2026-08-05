@@ -43,17 +43,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install OpenMP
-        run: brew install libomp
-
       - name: Build
         shell: bash
         run: |
           set -euo pipefail
-          g++ -std=c++17 -O3 -march=native -fopenmp -DNDEBUG -arch arm64 \
+          clang++ -std=c++17 -O3 -DNDEBUG -arch arm64 \
             -I. -Iinclude \
-            -o llm main.cpp -Xpreprocessor -fopenmp -lomp
+            -o llm main.cpp
           file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
 
       - name: Pack artifacts
         shell: bash
@@ -72,6 +76,64 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  ios-xcframework:
+    name: iOS XCFramework
+    needs: release-metadata
+    runs-on: macos-14
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build for iOS (arm64)
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang++ -std=c++17 -O3 -DNDEBUG \
+            -arch arm64 \
+            -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk \
+            -I. -Iinclude \
+            -c main.cpp -o llm-ios-arm64.o
+          ar rcs libllm-ios-arm64.a llm-ios-arm64.o
+
+      - name: Build for iOS Simulator (x86_64)
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang++ -std=c++17 -O3 -DNDEBUG \
+            -arch x86_64 \
+            -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk \
+            -I. -Iinclude \
+            -c main.cpp -o llm-ios-sim-x86_64.o
+          ar rcs libllm-ios-sim-x86_64.a llm-ios-sim-x86_64.o
+
+      - name: Create XCFramework
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -create-xcframework \
+            -library libllm-ios-arm64.a \
+            -library libllm-ios-sim-x86_64.a \
+            -output LLM.xcframework
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp -r LLM.xcframework README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-ios-xcframework
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
   ubuntu-x64-cpu:
     name: Ubuntu x64 (CPU)
     needs: release-metadata
@@ -85,6 +147,7 @@ jobs:
       - name: Dependencies
         shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y build-essential file
 
@@ -92,8 +155,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm main.cpp
+          g++ -std=c++17 -O3 -DNDEBUG \
+            -I. -Iinclude \
+            -o llm main.cpp
           file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
 
       - name: Pack artifacts
         shell: bash
@@ -125,8 +197,15 @@ jobs:
       - name: Dependencies
         shell: bash
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y build-essential file gcc-14 g++-14
+          sudo apt-get install -y build-essential file
+
+      - name: Toolchain workaround
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y gcc-14 g++-14
           echo "CC=gcc-14" >> "$GITHUB_ENV"
           echo "CXX=g++-14" >> "$GITHUB_ENV"
 
@@ -134,8 +213,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ${CXX:-g++} -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm main.cpp
+          ${CXX:-g++} -std=c++17 -O3 -DNDEBUG \
+            -I. -Iinclude \
+            -o llm main.cpp
           file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
 
       - name: Pack artifacts
         shell: bash
@@ -154,6 +242,278 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  ubuntu-x64-vulkan:
+    name: Ubuntu x64 (Vulkan)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file libvulkan-dev vulkan-tools
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -O3 -DNDEBUG -DENABLE_VULKAN \
+            -I. -Iinclude \
+            -o llm main.cpp -lvulkan
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-x64-vulkan
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  ubuntu-arm64-vulkan:
+    name: Ubuntu arm64 (Vulkan)
+    needs: release-metadata
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file libvulkan-dev vulkan-tools gcc-14 g++-14
+          echo "CC=gcc-14" >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ${CXX:-g++} -std=c++17 -O3 -DNDEBUG -DENABLE_VULKAN \
+            -I. -Iinclude \
+            -o llm main.cpp -lvulkan
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-arm64-vulkan
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  ubuntu-x64-sycl-fp32:
+    name: Ubuntu x64 (SYCL FP32)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file
+          # Install Intel SYCL
+          wget https://github.com/intel/llvm/releases/download/nightly-2024-07-01/sycl_linux.tar.gz
+          sudo mkdir -p /opt/intel/sycl
+          sudo tar -xzf sycl_linux.tar.gz -C /opt/intel/sycl
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/opt/intel/sycl/bin:$PATH"
+          clang++ -std=c++17 -O3 -DNDEBUG -DENABLE_SYCL \
+            -fsycl -fsycl-targets=spir64 \
+            -I. -Iinclude \
+            -o llm main.cpp
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-x64-sycl-fp32
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  ubuntu-x64-sycl-fp16:
+    name: Ubuntu x64 (SYCL FP16)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file
+          # Install Intel SYCL
+          wget https://github.com/intel/llvm/releases/download/nightly-2024-07-01/sycl_linux.tar.gz
+          sudo mkdir -p /opt/intel/sycl
+          sudo tar -xzf sycl_linux.tar.gz -C /opt/intel/sycl
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/opt/intel/sycl/bin:$PATH"
+          clang++ -std=c++17 -O3 -DNDEBUG -DENABLE_SYCL -DENABLE_FP16 \
+            -fsycl -fsycl-targets=spir64 \
+            -I. -Iinclude \
+            -o llm main.cpp
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-x64-sycl-fp16
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  android-arm64-cpu:
+    name: Android arm64 (CPU)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file
+          # Download Android NDK
+          mkdir -p /opt/android
+          cd /opt/android
+          wget https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
+          unzip -q android-ndk-r26b-linux.zip
+          echo "ANDROID_NDK_HOME=/opt/android/android-ndk-r26b" >> $GITHUB_ENV
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          $ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ \
+            --target=aarch64-linux-android21 \
+            -std=c++17 -O3 -DNDEBUG \
+            -I. -Iinclude \
+            -o llm main.cpp
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          file llm | grep -q "ARM aarch64"
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-android-arm64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
   windows-x64-cpu:
     name: Windows x64 (CPU)
     needs: release-metadata
@@ -164,18 +524,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup MSYS2 and MinGW GCC
-        uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-openmp
-
       - name: Build
-        shell: msys2 {0}
+        shell: cmd
         run: |
-          g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cl /nologo /std:c++17 /O2 /DNDEBUG /EHsc /Iinclude /I. main.cpp /Fe:llm.exe
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & .\llm.exe --chat | Out-Null
+          exit 0
 
       - name: Pack artifacts
         shell: pwsh
@@ -194,14 +554,97 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  windows-arm64-cpu:
+    name: Windows arm64 (CPU)
+    needs: release-metadata
+    runs-on: windows-2022
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64_arm64
+          cl /nologo /std:c++17 /O2 /DNDEBUG /EHsc /Iinclude /I. main.cpp /Fe:llm.exe
+
+      - name: Pack artifacts
+        shell: pwsh
+        run: |
+          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu"
+          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
+          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-windows-arm64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-x64-cuda13:
+    name: Windows x64 (CUDA 13)
+    needs: release-metadata
+    runs-on: windows-2022
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install CUDA 13
+        shell: pwsh
+        run: |
+          choco install -y cuda --version=13.3
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          call "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\bin\nvcc.exe" --version
+          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\include" main.cpp /Fe:llm.exe /link "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\lib\x64\cudart.lib"
+
+      - name: Pack artifacts
+        shell: pwsh
+        run: |
+          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13"
+          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
+          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          # Copy CUDA runtime DLLs
+          Copy-Item "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\bin\cudart64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
+          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-windows-x64-cuda13
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13.zip
+          if-no-files-found: error
+          retention-days: 30
+
   publish-release:
     name: Publish GitHub release
     needs:
       - release-metadata
       - macos-arm64-cpu
+      - ios-xcframework
       - ubuntu-x64-cpu
       - ubuntu-arm64-cpu
+      - ubuntu-x64-vulkan
+      - ubuntu-arm64-vulkan
+      - ubuntu-x64-sycl-fp32
+      - ubuntu-x64-sycl-fp16
+      - android-arm64-cpu
       - windows-x64-cpu
+      - windows-arm64-cpu
+      - windows-x64-cuda13
+    # Run this job as long as we got the version tag, even if some builds failed
     if: always() && needs.release-metadata.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -219,9 +662,17 @@ jobs:
         shell: bash
         env:
           RES_MACOS_ARM: ${{ needs.macos-arm64-cpu.result }}
+          RES_IOS: ${{ needs.ios-xcframework.result }}
           RES_UBUNTU_X64_CPU: ${{ needs.ubuntu-x64-cpu.result }}
           RES_UBUNTU_ARM_CPU: ${{ needs.ubuntu-arm64-cpu.result }}
+          RES_UBUNTU_X64_VULKAN: ${{ needs.ubuntu-x64-vulkan.result }}
+          RES_UBUNTU_ARM_VULKAN: ${{ needs.ubuntu-arm64-vulkan.result }}
+          RES_UBUNTU_SYCL32: ${{ needs.ubuntu-x64-sycl-fp32.result }}
+          RES_UBUNTU_SYCL16: ${{ needs.ubuntu-x64-sycl-fp16.result }}
+          RES_ANDROID_ARM: ${{ needs.android-arm64-cpu.result }}
           RES_WIN_X64_CPU: ${{ needs.windows-x64-cpu.result }}
+          RES_WIN_ARM_CPU: ${{ needs.windows-arm64-cpu.result }}
+          RES_WIN_CUDA: ${{ needs.windows-x64-cuda13.result }}
         run: |
           print_row() {
             local os="$1"
@@ -245,10 +696,11 @@ jobs:
             echo "## Platform Support"
             echo ""
             
-            echo "### macOS"
+            echo "### macOS / iOS"
             echo "| Platform | Architecture | Variant | Status | Download |"
             echo "|----------|--------------|---------|--------|----------|"
             print_row "macOS" "Apple Silicon (arm64)" "CPU" "$RES_MACOS_ARM" "llm.cpp-$TAG-bin-macos-arm64-cpu.tar.gz"
+            print_row "iOS" "arm64 / x86_64" "XCFramework" "$RES_IOS" "llm.cpp-$TAG-ios-xcframework.tar.gz"
             echo ""
             
             echo "### Linux (Ubuntu)"
@@ -256,21 +708,33 @@ jobs:
             echo "|----------|--------------|---------|--------|----------|"
             print_row "Ubuntu" "x64" "CPU" "$RES_UBUNTU_X64_CPU" "llm.cpp-$TAG-bin-ubuntu-x64-cpu.tar.gz"
             print_row "Ubuntu" "arm64" "CPU" "$RES_UBUNTU_ARM_CPU" "llm.cpp-$TAG-bin-ubuntu-arm64-cpu.tar.gz"
+            print_row "Ubuntu" "x64" "Vulkan" "$RES_UBUNTU_X64_VULKAN" "llm.cpp-$TAG-bin-ubuntu-x64-vulkan.tar.gz"
+            print_row "Ubuntu" "arm64" "Vulkan" "$RES_UBUNTU_ARM_VULKAN" "llm.cpp-$TAG-bin-ubuntu-arm64-vulkan.tar.gz"
+            print_row "Ubuntu" "x64" "SYCL FP32" "$RES_UBUNTU_SYCL32" "llm.cpp-$TAG-bin-ubuntu-x64-sycl-fp32.tar.gz"
+            print_row "Ubuntu" "x64" "SYCL FP16" "$RES_UBUNTU_SYCL16" "llm.cpp-$TAG-bin-ubuntu-x64-sycl-fp16.tar.gz"
+            echo ""
+            
+            echo "### Android"
+            echo "| Platform | Architecture | Variant | Status | Download |"
+            echo "|----------|--------------|---------|--------|----------|"
+            print_row "Android" "arm64" "CPU" "$RES_ANDROID_ARM" "llm.cpp-$TAG-bin-android-arm64-cpu.tar.gz"
             echo ""
             
             echo "### Windows"
             echo "| Platform | Architecture | Variant | Status | Download |"
             echo "|----------|--------------|---------|--------|----------|"
             print_row "Windows" "x64" "CPU" "$RES_WIN_X64_CPU" "llm.cpp-$TAG-bin-windows-x64-cpu.zip"
+            print_row "Windows" "arm64" "CPU" "$RES_WIN_ARM_CPU" "llm.cpp-$TAG-bin-windows-arm64-cpu.zip"
+            print_row "Windows" "x64" "CUDA 13" "$RES_WIN_CUDA" "llm.cpp-$TAG-bin-windows-x64-cuda13.zip"
             echo ""
             
             echo "## Legend"
             echo "- **Built**: Successfully compiled and available for download."
-            echo "- **Failed**: Build failed during compilation or testing."
+            echo "- **Failed**: Build failed during compilation or smoke testing."
             echo "- **Skipped**: Build was bypassed or cancelled."
             echo ""
             echo "---"
-            echo "For detailed build information and installation instructions, please refer to the README."
+            echo "For detailed build information and installation instructions, please refer to the [README](../../)."
           } > release-notes.md
 
       - name: Publish release
