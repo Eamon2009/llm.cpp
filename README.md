@@ -59,7 +59,11 @@ g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
 ./llm.exe data/input.txt
 ```
 should see something like this 
-```text
+```logs
+
+[DATA]  Total tokens : 3521179
+[DATA]  Train tokens : 3169061
+[DATA]  Val tokens   : 352118
 
 ██╗     ██╗     ███╗   ███╗        ██████╗ ██████╗ ██████╗
 ██║     ██║     ████╗ ████║       ██╔════╝ ██╔══██╗██╔══██╗
@@ -68,33 +72,29 @@ should see something like this
 ███████╗███████╗██║ ╚═╝ ██║ █████╗╚██████╗ ██║     ██║
 ╚══════╝╚══════╝╚═╝     ╚═╝ ╚════╝ ╚═════╝ ╚═╝     ╚═╝
 
-[BPE]   Text length: 11109973 characters
-[BPE]   Target vocab size: 2056
-[BPE]   Cached vocab to data/input.txt.tokenizer.bin
-[DATA]  Total tokens : 11109973
-[DATA]  Train tokens : 9998975
-[DATA]  Val tokens   : 1110998
-+-----------------------------------------------------------------------------+
-| LLM.cpp                                                                     |
-|======================================+======================================|
-| Parameter / Spec                     | Value                                |
-|--------------------------------------+--------------------------------------|
-| Host CPU Device                      | AMD Ryzen 5 PRO....                  |
-| Host RAM (Total)                     | 6045 MB                              |
-| Max Sequence Length                  | 64                                   |
-| Vocab Size (BPE Merges)              | 2244                                 |
-| Number of Layers                     | 4                                    |
-| Number of Heads                      | 2                                    |
-| Channels (Embeddings)                | 128                                  |
-| Number of Parameters                 | 1376708                              |
-| Repetition Penalty                   | 10                                   |
-| Repetition Window                    | 10                                   |
-+--------------------------------------+--------------------------------------+
-step 1/5000 | train loss 7.693331 | val loss 7.692642 | lr 5.00e-04 |  5949.88 ms | 344 tok/s | ram 224.3 MB
-step 2/5000 | train loss 7.225118 | val loss 7.692642 | lr 5.00e-04 |  6058.38 ms | 338 tok/s | ram 224.0 MB
-step 3/5000 | train loss 7.061631 | val loss 7.692642 | lr 5.00e-04 |  5943.76 ms | 344 tok/s | ram 223.5 MB
-step 4/5000 | train loss 6.966476 | val loss 7.692642 | lr 5.00e-04 |  6059.61 ms | 337 tok/s | ram 225.0 MB
-step 5/5000 | train loss 6.856962 | val loss 7.643652 | lr 5.00e-04 |  5931.75 ms | 345 tok/s | ram 224.5 MB
+
+  +------------------------------------------+------------------------------------------+
+  | LLM Architecture                                                                    |
+  +------------------------------------------+------------------------------------------+
+  | Max Context Length   : 64                | Vocab Size (BPE)     : 2056              |
+  | Number of Layers     : 4                 | Attention Heads      : 2                 |
+  | Embedding Channels   : 128               | Total Parameters     : 1328392           |
+  | Repetition Penalty   : 10                | Repetition Window    : 10                |
+  +------------------------------------------+------------------------------------------+
+
+  +-------------------------------------------------------------------------------------+
+  | Host Hardware Specs                                                                 |
+  +-------------------------------------------------------------------------------------+
+  | Host CPU Device      : AMD Ryzen 5 PRO 3500U w/ Radeon...                           |
+  | Host RAM (Total)     : 8045 MB                                                      |
+  +-------------------------------------------------------------------------------------+
+
+step 1/5000(0.02%) | train loss 7.650238 | val loss 7.652169  | lr 1.00e-06 |  4016.84 ms |  509 tok/s | ram 189.6 MB
+step 2/5000(0.04%) | train loss 7.648808 | val loss 7.652169  | lr 2.00e-06 |  4053.90 ms |  505 tok/s | ram 190.7 MB
+step 3/5000(0.06%) | train loss 7.658056 | val loss 7.652169  | lr 3.00e-06 |  4381.06 ms |  467 tok/s | ram 190.7 MB
+step 4/5000(0.08%) | train loss 7.648185 | val loss 7.652169  | lr 4.00e-06 |  4514.13 ms |  453 tok/s | ram 189.8 MB
+step 5/5000(0.10%) | train loss 7.646149 | val loss 7.652169  | lr 5.00e-06 |  4429.38 ms |  462 tok/s | ram 190.3 MB
+step 6/5000(0.12%) | train loss 7.644379 | val loss 7.652169  | lr 6.00e-06 |  4443.55 ms |  460 tok/s | ram 190.8 MB
 ```
 
 This trains from scratch on `data/input.txt` and writes the best checkpoint to `best_model.bin`. Once you have a checkpoint, generate or chat with it:
