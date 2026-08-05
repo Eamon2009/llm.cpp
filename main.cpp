@@ -1,6 +1,6 @@
 /*'''
  * llm.cpp - LMGNU Organization
- * Copyright (C) 2026 Eamon
+ * Copyright (C) 2026 Eamon Sippy
  * https://github.com/LMGNU/llm.cpp
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,7 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cmath> // Required for std::cos
+#include <cmath>
 #include <csignal>
 #include <cstdlib>
 #include <ctime>
@@ -42,8 +42,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <psapi.h> // K32GetProcessMemoryInfo ships in kernel32.dll
+#include <psapi.h>
 #include <windows.h>
+#pragma comment(lib, "advapi32.lib") // registry functions
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <sys/sysctl.h>
@@ -52,7 +53,6 @@
 #include <unistd.h>
 #endif
 
-// ANSI color escape codes for terminal formatting
 #define ANSI_CYAN "\033[96m"
 #define ANSI_BOLD "\033[1m"
 #define ANSI_RESET "\033[0m"
@@ -60,7 +60,6 @@
 static volatile bool g_interrupted = false;
 static void sig_handler(int) { g_interrupted = true; }
 
-// Return the current wall-clock time as a formatted string.
 static std::string now_str()
 {
       std::time_t t = std::time(nullptr);
@@ -69,14 +68,12 @@ static std::string now_str()
       return buf;
 }
 
-// Return elapsed seconds since an arbitrary epoch using a monotonic clock.
 static double wall_secs()
 {
       using namespace std::chrono;
       return duration<double>(steady_clock::now().time_since_epoch()).count();
 }
 
-// Helper function to fetch Hardware Specs safely across platforms
 static std::string get_cpu_info()
 {
 #if defined(__linux__)
@@ -132,9 +129,6 @@ static std::string get_cpu_info()
 #endif
 }
 
-// Return the total physical system RAM in megabytes.
-// Works on Windows, Linux, and macOS with no extra linker flags required.
-// Returns 0.0 if the platform-specific query fails.
 static double get_total_ram_mb()
 {
 #if defined(_WIN32)
@@ -168,9 +162,6 @@ static double get_total_ram_mb()
 #endif
 }
 
-// Return the current process's resident memory usage in megabytes.
-// Works on Windows, Linux, and macOS with no extra linker flags required.
-// Returns 0.0 if the platform-specific query fails.
 static double get_ram_usage_mb()
 {
 #if defined(_WIN32)
@@ -204,14 +195,12 @@ static double get_ram_usage_mb()
 #endif
 }
 
-// Return true if the file at path exists and can be opened.
 static bool file_exists(const std::string &path)
 {
       std::ifstream f(path.c_str(), std::ios::binary);
       return f.good();
 }
 
-// Return the directory portion of a file path, or "." for bare filenames.
 static std::string dir_name(const std::string &path)
 {
       std::string::size_type pos = path.find_last_of("/\\");
@@ -222,7 +211,6 @@ static std::string dir_name(const std::string &path)
       return path.substr(0, pos);
 }
 
-// Return true if path starts with a drive letter or a slash.
 static bool is_absolute_path(const std::string &path)
 {
       if (path.empty())
@@ -232,7 +220,6 @@ static bool is_absolute_path(const std::string &path)
       return path[0] == '/' || path[0] == '\\';
 }
 
-// Join base directory and child path with a separator.
 static std::string join_path(const std::string &base, const std::string &child)
 {
       if (base.empty() || base == ".")
@@ -243,8 +230,6 @@ static std::string join_path(const std::string &base, const std::string &child)
       return base + "/" + child;
 }
 
-// Try the requested path first, then look next to the executable.
-// Return whichever path exists, or the requested path if neither does.
 static std::string choose_existing_path(const std::string &requested_path, const std::string &argv0)
 {
       if (requested_path.empty())
@@ -266,8 +251,6 @@ static std::string choose_existing_path(const std::string &requested_path, const
       return requested_path;
 }
 
-// Choose a writable output path, preferring one next to the executable
-// only when the current directory copy does not already exist.
 static std::string choose_output_path(const std::string &requested_path, const std::string &argv0)
 {
       if (requested_path.empty() || is_absolute_path(requested_path))
@@ -279,7 +262,6 @@ static std::string choose_output_path(const std::string &requested_path, const s
       return exe_relative;
 }
 
-// Print a one-line usage summary listing all supported flags.
 static void print_usage(const char *argv0)
 {
       std::cout << "Usage: " << argv0 << " [options] [data_file]\n"
@@ -296,7 +278,6 @@ static void print_usage(const char *argv0)
                 << "  --help                  show this message\n";
 }
 
-// Sample n_tokens from the model using the given sampler params and print them.
 static void sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens,
                           const SamplerParams &params)
 {
@@ -311,8 +292,6 @@ static void sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens,
       std::cout << "\n";
 }
 
-// Estimate average cross-entropy loss over EVAL_ITERS random batches.
-// No gradients are computed and training mode is disabled.
 static float estimate_loss(GPTLanguageModel &model, DataLoader &dl, const std::string &split,
                            std::mt19937 &rng)
 {
@@ -328,36 +307,30 @@ static float estimate_loss(GPTLanguageModel &model, DataLoader &dl, const std::s
       return total / EVAL_ITERS;
 }
 
-// Calculate learning rate using cosine decay with linear warmup (Karpathy-style)
+// warmup + cosine decay
 static float get_lr(int it, float max_lr, int max_iters)
 {
-      // Assign default warmup to 10% of total iterations
       int warmup_iters = max_iters / 10;
       if (warmup_iters == 0)
-            warmup_iters = 1; // Prevent division by zero if max_iters is tiny
+            warmup_iters = 1;
 
       float min_lr = max_lr * 0.1f;
 
-      // 1) Linear warmup phase
       if (it <= warmup_iters)
       {
             return max_lr * (float)it / (float)warmup_iters;
       }
-      // 2) Post-decay flat phase
       if (it > max_iters)
       {
             return min_lr;
       }
-      // 3) Cosine decay phase
+
       float decay_ratio = (float)(it - warmup_iters) / (float)(max_iters - warmup_iters);
-      float coeff = 0.5f * (1.0f + std::cos(3.14159265358979323846f * decay_ratio)); // pi * decay
+      float coeff = 0.5f * (1.0f + std::cos(3.14159265358979323846f * decay_ratio));
 
       return min_lr + coeff * (max_lr - min_lr);
 }
 
-// Build the initial context for a chat turn.
-// Places system tokens first (if any), then appends user tokens.
-// Crops the combined context to BLOCK_SIZE from the right.
 static std::vector<int> build_turn_context(const std::vector<int> &sys_tokens,
                                            const std::vector<int> &user_tokens)
 {
@@ -366,15 +339,13 @@ static std::vector<int> build_turn_context(const std::vector<int> &sys_tokens,
       ctx.insert(ctx.end(), sys_tokens.begin(), sys_tokens.end());
       ctx.insert(ctx.end(), user_tokens.begin(), user_tokens.end());
 
+      // truncate to block size
       if ((int)ctx.size() > BLOCK_SIZE)
             ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
 
       return ctx;
 }
 
-// Run an interactive chat loop.
-// The system prompt is encoded once and prepended to the context on every turn.
-// Repetition penalty is applied during generation using params.
 static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens,
                      const SamplerParams &params)
 {
@@ -443,7 +414,6 @@ static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens
       }
 }
 
-// Entry point: parse flags, load data, build model, then train or run inference.
 int main(int argc, char *argv[])
 {
       std::signal(SIGINT, sig_handler);
@@ -467,6 +437,7 @@ int main(int argc, char *argv[])
       int rep_window = DEFAULT_REP_WINDOW;
       std::string system_prompt;
 
+      // parse cli args
       for (int i = 1; i < argc; ++i)
       {
             std::string a = argv[i];
@@ -533,7 +504,6 @@ int main(int argc, char *argv[])
       long n_params = model.num_params();
       std::string cpu_spec = get_cpu_info();
 
-      // Formatted nvidia-smi style system output with CPU Specs
       std::cout
           << "+-----------------------------------------------------------------------------+\n";
       std::cout
@@ -566,7 +536,7 @@ int main(int argc, char *argv[])
                 << rep_window << " |\n";
       std::cout
           << "+--------------------------------------+--------------------------------------+\n";
-      std::cout << std::right; // Reset formatting stream state
+      std::cout << std::right;
 
       if (chat_mode)
       {
@@ -615,7 +585,7 @@ int main(int argc, char *argv[])
             return 0;
       }
 
-      // Training mode: build optimizer, then iterate.
+      // train loop
       AdamWState opt = build_optimizer(model, LEARNING_RATE);
       std::mt19937 rng(SEED);
 
@@ -631,9 +601,8 @@ int main(int argc, char *argv[])
       {
             double step_start = wall_secs();
 
-            // Calculate dynamic learning rate based on cosine decay schedule
             float current_lr = get_lr(iter, LEARNING_RATE, MAX_ITERS);
-            opt.lr = current_lr; // Make sure AdamWState has a float 'lr' variable accessible
+            opt.lr = current_lr;
 
             std::pair<std::vector<int>, std::vector<int>> batch =
                 dl.get_batch("train", BATCH_SIZE, BLOCK_SIZE, rng);
@@ -653,7 +622,6 @@ int main(int argc, char *argv[])
 
             bool better = false;
 
-            // Calculate validation loss on EVERY iteration
             last_val_loss = estimate_loss(model, dl, "val", rng);
 
             if (last_val_loss < best_val_loss)
@@ -664,8 +632,6 @@ int main(int argc, char *argv[])
             }
 
             double ram_mb = get_ram_usage_mb();
-
-            // Calculate completion percentage
             double percent_done = ((double)iter / MAX_ITERS) * 100.0;
 
             std::cout << "step " << iter << "/" << MAX_ITERS << "(" << std::fixed
@@ -674,7 +640,7 @@ int main(int argc, char *argv[])
                       << "|val loss " << std::fixed << std::setprecision(6) << last_val_loss
                       << "|lr " << std::scientific << std::setprecision(2) << current_lr << "|"
                       << std::fixed << std::setprecision(2) << std::setw(8) << step_ms << " ms"
-                      << "|" << std::setw(6) << tok_per_sec << " tok/s"
+                      << "|" << std::setw(6) << tok_per_sec << "tok/s"
                       << "| ram " << std::setprecision(1) << ram_mb << " MB" << (better ? "" : "")
                       << "\n";
             std::cout.flush();
