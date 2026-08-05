@@ -7,14 +7,6 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
 #include "config/config.h"
@@ -44,7 +36,7 @@
 #endif
 #include <psapi.h>
 #include <windows.h>
-#pragma comment(lib, "advapi32.lib") // registry functions
+#pragma comment(lib, "advapi32.lib")
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <sys/sysctl.h>
@@ -53,20 +45,8 @@
 #include <unistd.h>
 #endif
 
-#define ANSI_CYAN "\033[96m"
-#define ANSI_BOLD "\033[1m"
-#define ANSI_RESET "\033[0m"
-
 static volatile bool g_interrupted = false;
 static void sig_handler(int) { g_interrupted = true; }
-
-static std::string now_str()
-{
-      std::time_t t = std::time(nullptr);
-      char buf[32];
-      std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&t));
-      return buf;
-}
 
 static double wall_secs()
 {
@@ -307,7 +287,6 @@ static float estimate_loss(GPTLanguageModel &model, DataLoader &dl, const std::s
       return total / EVAL_ITERS;
 }
 
-// warmup + cosine decay
 static float get_lr(int it, float max_lr, int max_iters)
 {
       int warmup_iters = max_iters / 10;
@@ -339,7 +318,6 @@ static std::vector<int> build_turn_context(const std::vector<int> &sys_tokens,
       ctx.insert(ctx.end(), sys_tokens.begin(), sys_tokens.end());
       ctx.insert(ctx.end(), user_tokens.begin(), user_tokens.end());
 
-      // truncate to block size
       if ((int)ctx.size() > BLOCK_SIZE)
             ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
 
@@ -355,8 +333,7 @@ static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens
             sys_tokens = dl.encode(params.system_prompt);
             if (sys_tokens.empty())
             {
-                  std::cerr << "[WARN]  System prompt produced zero tokens. "
-                               "All characters may be outside the training vocabulary.\n";
+                  std::cerr << "[WARN]  System prompt produced zero tokens.\n";
             }
             else
             {
@@ -374,7 +351,7 @@ static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens
 
       while (!g_interrupted)
       {
-            std::cout << "\033[1;32mroot>\033[0m ";
+            std::cout << "root> ";
             std::cout.flush();
 
             std::string prompt;
@@ -399,7 +376,7 @@ static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens
 
             std::vector<int> ctx = build_turn_context(sys_tokens, user_tokens);
 
-            std::cout << "\033[1;36mllm>\033[0m ";
+            std::cout << "llm> ";
             std::cout.flush();
 
             for (int tok = 0; tok < max_new_tokens && !g_interrupted; ++tok)
@@ -418,8 +395,6 @@ int main(int argc, char *argv[])
 {
       std::signal(SIGINT, sig_handler);
 
-      print_banner();
-
       std::string data_path = DEFAULT_CLEANED_PATH;
       std::string model_path = BEST_MODEL_PATH;
 
@@ -437,7 +412,6 @@ int main(int argc, char *argv[])
       int rep_window = DEFAULT_REP_WINDOW;
       std::string system_prompt;
 
-      // parse cli args
       for (int i = 1; i < argc; ++i)
       {
             std::string a = argv[i];
@@ -503,39 +477,47 @@ int main(int argc, char *argv[])
 
       long n_params = model.num_params();
       std::string cpu_spec = get_cpu_info();
+      print_banner();
+      std::string ram_spec = std::to_string((long long)get_total_ram_mb()) + " MB";
 
-      std::cout
-          << "+-----------------------------------------------------------------------------+\n";
-      std::cout
-          << "| LLM.cpp                                                                     |\n";
-      std::cout
-          << "|======================================+======================================|\n";
-      std::cout
-          << "| Parameter / Spec                     | Value                                |\n";
-      std::cout
-          << "|--------------------------------------+--------------------------------------|\n";
-      std::cout << "| Host CPU Device                      | " << std::left << std::setw(36)
-                << cpu_spec << " |\n";
-      std::cout << "| Host RAM (Total)                     | " << std::left << std::setw(36)
-                << (std::to_string((long long)get_total_ram_mb()) + " MB") << " |\n";
-      std::cout << "| Max Sequence Length                  | " << std::left << std::setw(36)
-                << BLOCK_SIZE << " |\n";
-      std::cout << "| Vocab Size (BPE Merges)              | " << std::left << std::setw(36)
-                << dl.vocab_size << " |\n";
-      std::cout << "| Number of Layers                     | " << std::left << std::setw(36)
-                << N_LAYER << " |\n";
-      std::cout << "| Number of Heads                      | " << std::left << std::setw(36)
-                << N_HEAD << " |\n";
-      std::cout << "| Channels (Embeddings)                | " << std::left << std::setw(36)
-                << N_EMBD << " |\n";
-      std::cout << "| Number of Parameters                 | " << std::left << std::setw(36)
-                << n_params << " |\n";
-      std::cout << "| Repetition Penalty                   | " << std::left << std::setw(36)
-                << rep_penalty << " |\n";
-      std::cout << "| Repetition Window                    | " << std::left << std::setw(36)
-                << rep_window << " |\n";
-      std::cout
-          << "+--------------------------------------+--------------------------------------+\n";
+      std::cout << "\n";
+
+      std::cout << "  "
+                   "+------------------------------------------+-----------------------------------"
+                   "-------+\n";
+      std::cout << "  | " << std::left << std::setw(83) << "LLM Architecture" << " |\n";
+      std::cout << "  "
+                   "+------------------------------------------+-----------------------------------"
+                   "-------+\n";
+      std::cout << "  | Max Context Length   : " << std::left << std::setw(17) << BLOCK_SIZE
+                << " | Vocab Size (BPE)     : " << std::left << std::setw(17) << dl.vocab_size
+                << " |\n";
+      std::cout << "  | Number of Layers     : " << std::left << std::setw(17) << N_LAYER
+                << " | Attention Heads      : " << std::left << std::setw(17) << N_HEAD << " |\n";
+      std::cout << "  | Embedding Channels   : " << std::left << std::setw(17) << N_EMBD
+                << " | Total Parameters     : " << std::left << std::setw(17) << n_params << " |\n";
+      std::cout << "  | Repetition Penalty   : " << std::left << std::setw(17) << rep_penalty
+                << " | Repetition Window    : " << std::left << std::setw(17) << rep_window
+                << " |\n";
+      std::cout << "  "
+                   "+------------------------------------------+-----------------------------------"
+                   "-------+\n\n";
+
+      std::cout << "  "
+                   "+------------------------------------------------------------------------------"
+                   "-------+\n";
+      std::cout << "  | " << std::left << std::setw(83) << "Host Hardware Specs" << " |\n";
+      std::cout << "  "
+                   "+------------------------------------------------------------------------------"
+                   "-------+\n";
+      std::cout << "  | Host CPU Device      : " << std::left << std::setw(60) << cpu_spec
+                << " |\n";
+      std::cout << "  | Host RAM (Total)     : " << std::left << std::setw(60) << ram_spec
+                << " |\n";
+      std::cout << "  "
+                   "+------------------------------------------------------------------------------"
+                   "-------+\n\n";
+
       std::cout << std::right;
 
       if (chat_mode)
@@ -585,7 +567,7 @@ int main(int argc, char *argv[])
             return 0;
       }
 
-      // train loop
+      // Train loop
       AdamWState opt = build_optimizer(model, LEARNING_RATE);
       std::mt19937 rng(SEED);
 
@@ -609,7 +591,6 @@ int main(int argc, char *argv[])
 
             SavedForward saved =
                 forward_save(model, batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, true);
-
             float batch_loss =
                 model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false).second;
 
@@ -620,29 +601,35 @@ int main(int argc, char *argv[])
             int tok_per_sec =
                 (step_ms > 0.0) ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0)) : 0;
 
+            bool val_updated = false;
             bool better = false;
 
-            last_val_loss = estimate_loss(model, dl, "val", rng);
-
-            if (last_val_loss < best_val_loss)
+            if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
             {
-                  best_val_loss = last_val_loss;
-                  model.save(model_path);
-                  better = true;
+                  last_val_loss = estimate_loss(model, dl, "val", rng);
+                  val_updated = true;
+
+                  if (last_val_loss < best_val_loss)
+                  {
+                        best_val_loss = last_val_loss;
+                        model.save(model_path);
+                        better = true;
+                  }
             }
 
-            double ram_mb = get_ram_usage_mb();
             double percent_done = ((double)iter / MAX_ITERS) * 100.0;
+            double ram_mb = get_ram_usage_mb();
 
             std::cout << "step " << iter << "/" << MAX_ITERS << "(" << std::fixed
                       << std::setprecision(2) << percent_done << "%)"
-                      << "|train loss " << std::fixed << std::setprecision(6) << batch_loss
-                      << "|val loss " << std::fixed << std::setprecision(6) << last_val_loss
-                      << "|lr " << std::scientific << std::setprecision(2) << current_lr << "|"
-                      << std::fixed << std::setprecision(2) << std::setw(8) << step_ms << " ms"
-                      << "|" << std::setw(6) << tok_per_sec << "tok/s"
-                      << "| ram " << std::setprecision(1) << ram_mb << " MB" << (better ? "" : "")
-                      << "\n";
+                      << " | train loss " << std::fixed << std::setprecision(6) << batch_loss
+                      << " | val loss " << std::fixed << std::setprecision(6) << last_val_loss
+                      << (val_updated ? "*" : " ") << " | lr " << std::scientific
+                      << std::setprecision(2) << current_lr << " | " << std::fixed
+                      << std::setprecision(2) << std::setw(8) << step_ms << " ms"
+                      << " | " << std::setw(6) << tok_per_sec << " tok/s"
+                      << " | ram " << std::setprecision(1) << ram_mb << " MB"
+                      << (better ? "  best" : "") << "\n";
             std::cout.flush();
 
             if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
