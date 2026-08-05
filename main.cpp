@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath> // Required for std::cos
 #include <csignal>
 #include <cstdlib>
 #include <ctime>
@@ -57,10 +58,7 @@
 #define ANSI_RESET "\033[0m"
 
 static volatile bool g_interrupted = false;
-static void sig_handler(int)
-{
-      g_interrupted = true;
-}
+static void sig_handler(int) { g_interrupted = true; }
 
 // Return the current wall-clock time as a formatted string.
 static std::string now_str()
@@ -112,11 +110,8 @@ static std::string get_cpu_info()
       return "Apple Silicon / Mac CPU";
 #elif defined(_WIN32)
       HKEY hKey;
-      if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
-                        "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
-                        0,
-                        KEY_READ,
-                        &hKey) == ERROR_SUCCESS)
+      if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0,
+                        KEY_READ, &hKey) == ERROR_SUCCESS)
       {
             char name[128];
             DWORD size = sizeof(name);
@@ -302,8 +297,8 @@ static void print_usage(const char *argv0)
 }
 
 // Sample n_tokens from the model using the given sampler params and print them.
-static void
-sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens, const SamplerParams &params)
+static void sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens,
+                          const SamplerParams &params)
 {
       std::vector<int> ctx = {0};
       for (int i = 0; i < n_tokens; ++i)
@@ -318,19 +313,46 @@ sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens, const Sampl
 
 // Estimate average cross-entropy loss over EVAL_ITERS random batches.
 // No gradients are computed and training mode is disabled.
-static float
-estimate_loss(GPTLanguageModel &model, DataLoader &dl, const std::string &split, std::mt19937 &rng)
+static float estimate_loss(GPTLanguageModel &model, DataLoader &dl, const std::string &split,
+                           std::mt19937 &rng)
 {
       float total = 0.0f;
       for (int k = 0; k < EVAL_ITERS; ++k)
       {
             std::pair<std::vector<int>, std::vector<int>> batch =
-                  dl.get_batch(split, BATCH_SIZE, BLOCK_SIZE, rng);
+                dl.get_batch(split, BATCH_SIZE, BLOCK_SIZE, rng);
             std::pair<Tensor, float> result =
-                  model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false);
+                model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false);
             total += result.second;
       }
       return total / EVAL_ITERS;
+}
+
+// Calculate learning rate using cosine decay with linear warmup (Karpathy-style)
+static float get_lr(int it, float max_lr, int max_iters)
+{
+      // Assign default warmup to 10% of total iterations
+      int warmup_iters = max_iters / 10;
+      if (warmup_iters == 0)
+            warmup_iters = 1; // Prevent division by zero if max_iters is tiny
+
+      float min_lr = max_lr * 0.1f;
+
+      // 1) Linear warmup phase
+      if (it <= warmup_iters)
+      {
+            return max_lr * (float)it / (float)warmup_iters;
+      }
+      // 2) Post-decay flat phase
+      if (it > max_iters)
+      {
+            return min_lr;
+      }
+      // 3) Cosine decay phase
+      float decay_ratio = (float)(it - warmup_iters) / (float)(max_iters - warmup_iters);
+      float coeff = 0.5f * (1.0f + std::cos(3.14159265358979323846f * decay_ratio)); // pi * decay
+
+      return min_lr + coeff * (max_lr - min_lr);
 }
 
 // Build the initial context for a chat turn.
@@ -353,8 +375,8 @@ static std::vector<int> build_turn_context(const std::vector<int> &sys_tokens,
 // Run an interactive chat loop.
 // The system prompt is encoded once and prepended to the context on every turn.
 // Repetition penalty is applied during generation using params.
-static void
-run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens, const SamplerParams &params)
+static void run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens,
+                     const SamplerParams &params)
 {
       std::vector<int> sys_tokens;
       if (!params.system_prompt.empty())
@@ -513,15 +535,15 @@ int main(int argc, char *argv[])
 
       // Formatted nvidia-smi style system output with CPU Specs
       std::cout
-            << "+-----------------------------------------------------------------------------+\n";
+          << "+-----------------------------------------------------------------------------+\n";
       std::cout
-            << "| LLM.cpp                                                                     |\n";
+          << "| LLM.cpp                                                                     |\n";
       std::cout
-            << "|======================================+======================================|\n";
+          << "|======================================+======================================|\n";
       std::cout
-            << "| Parameter / Spec                     | Value                                |\n";
+          << "| Parameter / Spec                     | Value                                |\n";
       std::cout
-            << "|--------------------------------------+--------------------------------------|\n";
+          << "|--------------------------------------+--------------------------------------|\n";
       std::cout << "| Host CPU Device                      | " << std::left << std::setw(36)
                 << cpu_spec << " |\n";
       std::cout << "| Host RAM (Total)                     | " << std::left << std::setw(36)
@@ -543,7 +565,7 @@ int main(int argc, char *argv[])
       std::cout << "| Repetition Window                    | " << std::left << std::setw(36)
                 << rep_window << " |\n";
       std::cout
-            << "+--------------------------------------+--------------------------------------+\n";
+          << "+--------------------------------------+--------------------------------------+\n";
       std::cout << std::right; // Reset formatting stream state
 
       if (chat_mode)
@@ -609,52 +631,52 @@ int main(int argc, char *argv[])
       {
             double step_start = wall_secs();
 
+            // Calculate dynamic learning rate based on cosine decay schedule
+            float current_lr = get_lr(iter, LEARNING_RATE, MAX_ITERS);
+            opt.lr = current_lr; // Make sure AdamWState has a float 'lr' variable accessible
+
             std::pair<std::vector<int>, std::vector<int>> batch =
-                  dl.get_batch("train", BATCH_SIZE, BLOCK_SIZE, rng);
+                dl.get_batch("train", BATCH_SIZE, BLOCK_SIZE, rng);
 
             SavedForward saved =
-                  forward_save(model, batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, true);
+                forward_save(model, batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, true);
 
             float batch_loss =
-                  model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false).second;
+                model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false).second;
 
             Grads grads = backward(model, saved);
             apply_grads(model, grads, opt);
 
             double step_ms = (wall_secs() - step_start) * 1000.0;
             int tok_per_sec =
-                  (step_ms > 0.0) ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0)) : 0;
+                (step_ms > 0.0) ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0)) : 0;
 
             bool better = false;
-            bool val_updated = false;
-            if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
+
+            // Calculate validation loss on EVERY iteration
+            last_val_loss = estimate_loss(model, dl, "val", rng);
+
+            if (last_val_loss < best_val_loss)
             {
-                  last_val_loss = estimate_loss(model, dl, "val", rng);
-                  val_updated = true;
-                  if (last_val_loss < best_val_loss)
-                  {
-                        best_val_loss = last_val_loss;
-                        model.save(model_path);
-                        better = true;
-                  }
+                  best_val_loss = last_val_loss;
+                  model.save(model_path);
+                  better = true;
             }
 
             double ram_mb = get_ram_usage_mb();
 
-            // train loss is always the fresh loss from this step's forward pass.
-            // val loss is only recomputed every EVAL_INTERVAL steps (recomputing it
-            // every step would be wasteful) but the value shown is always the most
-            // recently and correctly measured one — never stale/fake data. A "*"
-            // marks the steps where it was just refreshed.
-            std::cout << "step " << std::right << std::setw(6) << iter << "/" << MAX_ITERS
-                      << " | train loss " << std::fixed << std::setprecision(6) << batch_loss
-                      << " | val loss " << std::fixed << std::setprecision(6) << last_val_loss
-                      << (val_updated ? "*" : " ") << " | lr " << std::scientific
-                      << std::setprecision(2) << (float)LEARNING_RATE << " | " << std::fixed
-                      << std::setprecision(2) << std::setw(8) << step_ms << " ms"
-                      << " | " << std::setw(6) << tok_per_sec << " tok/s"
-                      << " | ram " << std::setprecision(1) << ram_mb << " MB"
-                      << (better ? "  best" : "") << "\n";
+            // Calculate completion percentage
+            double percent_done = ((double)iter / MAX_ITERS) * 100.0;
+
+            std::cout << "step " << iter << "/" << MAX_ITERS << "(" << std::fixed
+                      << std::setprecision(2) << percent_done << "%)"
+                      << "|train loss " << std::fixed << std::setprecision(6) << batch_loss
+                      << "|val loss " << std::fixed << std::setprecision(6) << last_val_loss
+                      << "|lr " << std::scientific << std::setprecision(2) << current_lr << "|"
+                      << std::fixed << std::setprecision(2) << std::setw(8) << step_ms << " ms"
+                      << "|" << std::setw(6) << tok_per_sec << " tok/s"
+                      << "| ram " << std::setprecision(1) << ram_mb << " MB" << (better ? "" : "")
+                      << "\n";
             std::cout.flush();
 
             if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
