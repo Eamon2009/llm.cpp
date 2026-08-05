@@ -37,16 +37,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Ubuntu with GCC
           - os: ubuntu-latest
-            compiler: gcc
+            os_name: Ubuntu
+            variant: cpu
+            cxx: g++
+          # Ubuntu with Clang
           - os: ubuntu-latest
-            compiler: clang
+            os_name: Ubuntu
+            variant: cpu
+            cxx: clang++
+          # macOS Apple Silicon
           - os: macos-latest
-            compiler: clang
+            os_name: macOS
+            variant: cpu
+            cxx: clang++
+          # Windows MSVC
           - os: windows-latest
-            compiler: msvc
-          - os: windows-latest
-            compiler: gcc
+            os_name: Windows
+            variant: cpu-x64
+            # No CXX needed; script explicitly calls vcvarsall.bat
     defaults:
       run:
         shell: bash
@@ -57,16 +67,10 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential g++ clang libomp-dev
 
-      - name: Install Windows MinGW
-        if: runner.os == 'Windows' && matrix.compiler == 'gcc'
-        run: choco install mingw -y
-
-      - name: Setup MSVC
-        if: runner.os == 'Windows' && matrix.compiler == 'msvc'
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: Run Build Script
-        run: bash .ci/build.sh ${{ runner.os }} ${{ matrix.compiler }}
+        env:
+          CXX: ${{ matrix.cxx }}
+        run: bash .ci/build.sh ${{ matrix.os_name }} ${{ matrix.variant }}
 
   python-tests:
     needs: detect-changes
@@ -78,11 +82,13 @@ jobs:
         python-version: ['3.9', '3.10', '3.11', '3.12']
     steps:
       - uses: actions/checkout@v4
+      
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5 
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
+          
       - name: Install dependencies & Test
         run: |
           python -m pip install --upgrade pip
