@@ -116,92 +116,57 @@ llm.exe [data_path] [--generate] [--chat] [--chat-tokens N]
 ## File structure
 
 ```text
-## Structure
-
-```text
 .
-├── .devops/                        # DevOps, Docker, & proxy configurations
-│   ├── docker-compose.dev.yml      # Local development compose setup
-│   ├── docker-compose.gpu.yml      # Compose setup with GPU acceleration
-│   ├── docker-compose.yml          # Base Docker Compose file
-│   ├── Dockerfile                  # Primary build setup
-│   ├── Dockerfile.backend          # Backend service Docker setup
-│   ├── Dockerfile.cpp              # Native C++ build container setup
-│   ├── Dockerfile.frontend         # Frontend UI Docker setup
-│   └── nginx.conf                  # Reverse proxy configuration
-│
-├── .github/                        # GitHub Actions CI/CD workflows & repository templates
-│   ├── ISSUE_TEMPLATE/             # Bug report & feature request templates
-│   │   ├── bug_report.md
-│   │   ├── config.yml
-│   │   └── feature_request.md
-│   ├── workflows/                  # CI/CD automation pipelines
-│   │   ├── check.yml
-│   │   ├── ci-approval.yml
-│   │   ├── ci.yml
-│   │   ├── docker-publish.yml
-│   │   ├── jekyll-gh-pages.yml
-│   │   ├── main.yml
-│   │   ├── pr-check.yml
-│   │   ├── release.yml
-│   │   └── test.yml
-│   ├── dependabot.yml              # Automated dependency update configuration
-│   └── pull_request_template.md    # Pull request contribution template
-│
-├── assets/                         # Visual execution benchmarks & screenshots
-│   ├── run_2026-07-16 165731.png
-│   ├── run_20260430_192930.png
-│   ├── run_20260508_110726.png
-│   └── run_20260530_165216 (1).png
-│
-├── benches/                        # Performance benchmarking suite
-│   └── bench.cpp                   # C++ benchmark execution script
-│
-├── config/                         # Global project configurations
-│   └── config.h                    # C++ global configuration header
-│
-├── data/                           # Dataset ingestion scripts & raw samples
-│   ├── data_set.py                 # Data loader preparation script
-│   └── input.txt                   # Sample raw dataset text
-│
-├── docs/                           # Documentation media & report graphics
-│   └── training_report.png         # Model training performance chart
-│
-├── engine/                         # Core execution & inference engines
-│   ├── distributed/                # Multi-node / distributed training & inference
-│   │   ├── infer.py                # Distributed inference pipeline
-│   │   └── train.py                # Distributed training pipeline
-│   ├── llm.cpp/                    # Low-level CUDA/C++ runtime engine
-│   │   ├── config/                 # Engine-specific configurations
-│   │   ├── include/                # CUDA kernels & C++ architecture headers
-│   │   ├── best_model.bin          # Trained binary weights checkpoint
-│   │   ├── llm.cu                  # CUDA GPU execution source
-│   │   ├── llm.exe                 # Compiled engine binary executable
-│   │   ├── llm.py                  # Engine Python bindings/wrapper
-│   │   ├── Makefile                # Engine build compilation setup
-│   │   └── train.mm                # Metal training harness
-│   ├── logs/                       # Execution log files
-│   ├── inference.py                # Python model inference entry point
-│   ├── main.py                     # Primary Python execution entry point
-│   └── llm.pt                      # Pretrained PyTorch model checkpoint
-│
-├── include/                        # Core C++ neural network architecture headers
-│   ├── attention.h                 # Multi-head attention implementation
-│   ├── backward.h                  # Backpropagation & gradient calculation utilities
-│   ├── block.h                     # Transformer block assembly
-│   ├── embedding.h                 # Token & positional embedding logic
-│   ├── feedforward.h               # Feed-forward layer implementation
-│   ├── gpt.h                       # Full GPT transformer architecture layout
-│   ├── layernorm.h                 # Layer normalization operations
-│   ├── linear.h                    # Fully connected dense layer
-│   ├── lm.h                        # High-level language model interface
-│   ├── sampler.h                   # Token sampling routines (Top-K, Top-P, Temperature)
-│   ├── tensor.h                    # Multidimensional array data structures
-│   ├── tokenizer.h                 # Text tokenization logic
-│   └── torch_bridge.h              # PyTorch interoperability layer
-│
-├── scripts/                        # Automation & compilation scripts
-│
+├── .ci/                        # CI/CD pipelines and Docker configurations
+├── .github/                    # GitHub Actions workflows and issue templates
+├── assets/                     # Project images, banners, and hardware diagrams
+├── benches/
+│   └── bench.cpp               # C++ benchmarking script for performance testing
+├── config/
+│   └── config.h                # Global configuration parameters
+├── data/
+│   ├── dataset.py              # Data loading and preprocessing pipeline
+│   ├── data_set.py             # Alternative dataset handling logic
+│   ├── export.py               # Script to export models or tensors
+│   └── input.txt               # Raw text data used for training/testing
+├── docs/                       # Additional documentation and generated reports
+├── engine/                     # Core backend implementation
+│   ├── llm.pt                  # Primary PyTorch model checkpoint
+│   ├── mini-quadtrix.pt        # Minimal PyTorch model for testing
+│   └── llm.cpp/                # Low-level C++/CUDA/Metal engine
+│       ├── CMakeLists.txt      # Engine-specific build configuration
+│       ├── llm.cu              # CUDA implementation for Nvidia GPUs
+│       ├── make                # Engine Makefile compilation script
+│       ├── train.mm            # Objective-C++ Metal script for Apple Silicon training
+│       ├── config/
+│       │   └── config.h        # Engine-specific configuration header
+│       └── include/            # Neural network mathematical headers
+│           ├── attention.h     # Self-attention module definitions
+│           ├── cuda_kernels.cuh # Custom CUDA kernel definitions
+│           ├── layer.cuh       # Layer abstractions for GPU
+│           ├── tensor.cuh      # Core tensor math operations
+│           └── ...             # (Other low-level neural net headers)
+├── include/                    # High-level C++ API headers
+│   ├── attention.h             # High-level attention interfaces
+│   ├── gpt.h                   # GPT model architecture definitions
+│   ├── llm-cpp.hpp             # Main library interface for external use
+│   ├── tokenizer.h             # Text tokenization logic
+│   └── torch_bridge.h          # Interoperability layer for PyTorch tensors
+├── scripts/
+│   └── build.sh                # Automation script for building the project
+├── train_test/                 # Experimental and testing scripts
+│   ├── model.py                # Python model architecture definitions
+│   ├── test.c                  # C-based functional testing
+│   └── train2.mm               # Experimental Metal training iterations
+├── .clang-format               # Code style rules for C/C++ files
+├── .clang-tidy                 # Linter configuration for C/C++ static analysis
+├── benchmark.cpp               # Entry point for running system benchmarks
+├── CMakeLists.txt              # Root CMake build configuration
+├── llm.mm                      # Apple Silicon (Metal) main inference entry point
+├── main.cpp                    # Main application C++ entry point
+├── README.md                   # Main project documentation
+├── requirements.txt            # Python dependencies for the project
+└── shards.cpp                  # C++ implementation for handling data shards
 ```
 ---
 
