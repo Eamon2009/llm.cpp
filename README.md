@@ -37,7 +37,7 @@ model->to(torch::kCUDA)
 <img width="824" height="218" alt="image" src="https://github.com/user-attachments/assets/073d1c14-f44e-413b-9f0f-ae35be81d1ed" />
 
 which transfers all parameters to GPU memory; all subsequent `torch::matmul` calls dispatch to cuBLAS automatically.
-***technical notes***: [docs](https://eamon2009.github.io/LLMs/)
+***visit web***: [llm.app](https://lmgnu.github.io/llm.app)
 
 ```mermaid
 graph TD
