@@ -29,7 +29,7 @@ The point of this repo is the C++ core. The PyTorch exist to make the model usab
 ---
 
 ## From CPU to GPU
-The custom C++ backend is transparent but slow: a CPU executes scalar matrix multiplication at roughly 1-10 GFLOP/s. An NVIDIA RTX 4090 delivers ∼80 TFLOP/s-an 8,000–80,000× speedup for the same computation.The LibTorch port replaces the custom backend with PyTorch’s C++ API, gaining cuBLAS-accelerated matrix operations. The transformer architecture remains unchanged only the compute layer is modified. A single line migrates
+The custom C++ backend is transparent but slow: a CPU executes scalar matrix multiplication at roughly 1-10 GFLOP/sec. An NVIDIA RTX 4090 delivers ∼80 TFLOP/s-an 8,000 - 80,000× speedup for the same computation.The LibTorch port replaces the custom backend with PyTorch’s C++ API, gaining cuBLAS-accelerated matrix operations. The transformer architecture remains unchanged only the compute layer is modified. A single line migrates
 the model to GPU:
 ```cpp
 model->to(torch::kCUDA)
