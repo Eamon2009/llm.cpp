@@ -175,8 +175,8 @@ llm.exe [data_path] [--generate] [--chat] [--chat-tokens N]
 ## File structure
 
 ```text
-.
-├── .ci/                        # CI/CD pipelines and Docker configurations
+
+|-─ .ci/                        # CI/CD pipelines and Docker configurations
 ├── .github/                    # GitHub Actions workflows and issue templates
 ├── assets/                     # Project images, banners, and hardware diagrams
 ├── benches/
