@@ -1,4 +1,4 @@
-name: Automated Commit Notification
+name: Admin-check
 
 on:
   push:
