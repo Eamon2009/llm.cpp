@@ -1,5 +1,4 @@
 
-# Quadtrix.cpp — build.sh  
 # Usage
 #   ./scripts/build.sh               # full stack, CPU
 #   ./scripts/build.sh dev           # hot-reload dev mode
@@ -20,10 +19,10 @@ YELLOW="\033[1;33m"
 RED="\033[0;31m"
 RESET="\033[0m"
 
-info()    { echo -e "${CYAN}[quadtrix]${RESET} $*"; }
-success() { echo -e "${GREEN}[quadtrix]${RESET} $*"; }
-warn()    { echo -e "${YELLOW}[quadtrix]${RESET} $*"; }
-error()   { echo -e "${RED}[quadtrix] ERROR:${RESET} $*" >&2; }
+info()    { echo -e "${CYAN}[llm.cpp]${RESET} $*"; }
+success() { echo -e "${GREEN}[llm.cpp]${RESET} $*"; }
+warn()    { echo -e "${YELLOW}[llm.cpp]${RESET} $*"; }
+error()   { echo -e "${RED}[llm.cpp] ERROR:${RESET} $*" >&2; }
 
 COMPOSE_BASE="docker compose -f docker-compose.yml"
 COMPOSE_DEV="${COMPOSE_BASE} -f docker-compose.dev.yml"
@@ -111,7 +110,7 @@ cmd_clean() {
     read -r -p "Are you sure? [y/N] " confirm
     if [[ "${confirm,,}" == "y" ]]; then
         $COMPOSE_BASE down -v --remove-orphans
-        docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/Eamon2009/Quadtrix.cpp"
+        docker image prune -f --filter "label=org.opencontainers.image.source=https://github.com/Eamon2009/"
         success "Cleaned."
     else
         info "Aborted."
