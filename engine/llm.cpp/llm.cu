@@ -1,7 +1,6 @@
 
 /**
- * @file   main.cu
- * @brief  CUDA-accelerated training/inference entry point for GPTLanguageModel.
+ * @file   llm.cu
  * @author Eamon Sippy 
  * @Copyright (c) 2026 Eamon Sippy . All rights reserved.
  */
@@ -11,13 +10,10 @@
 #include "include/bpe.h"
 #include "include/lm.h"
 #include "include/sampler.h"
-
-// CUDA & cuBLAS Acceleration Headers
 #include "include/cuda_kernels.cuh"
 #include "include/cuda_layers.cuh"
 #include "include/cuda_tensor.cuh"
 #include "include/cuda_utils.cuh"
-
 #include <algorithm>
 #include <chrono>
 #include <csignal>
