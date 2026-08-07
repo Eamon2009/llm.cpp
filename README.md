@@ -2,6 +2,8 @@
 
 <h1 align="center">
   <img width="1942" height="700" alt="llm-cpp-lmgnu" src="https://github.com/user-attachments/assets/eca0f789-395f-4457-a867-684b428f6963" />
+ 
+
 
 [![LMGNU](https://img.shields.io/badge/LMGNU-powered-56D1A0?logo=https%3A%2F%2Fraw.githubusercontent.com%2FLMGNU%2F.github%2Fmain%2Fprofile%2Fdragon_logo.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml) [![Release](https://img.shields.io/github/v/release/LMGNU/llm.cpp)](https://github.com/LMGNU/llm.cpp/releases) [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0) 
 </h1>
@@ -35,6 +37,7 @@ the model to GPU:
 model->to(torch::kCUDA)
 ```
 <img width="824" height="218" alt="image" src="https://github.com/user-attachments/assets/073d1c14-f44e-413b-9f0f-ae35be81d1ed" />
+
 
 which transfers all parameters to GPU memory; all subsequent `torch::matmul` calls dispatch to cuBLAS automatically.
 ***visit web***: [llm.app](https://lmgnu.github.io/llm.app)
@@ -102,6 +105,8 @@ graph TD
 ---
 
 ## quick start (CPU)
+<img width="730" height="181" alt="image" src="https://github.com/user-attachments/assets/d510c555-780c-4449-b54b-55ec46bb8d23" />
+
 
 The fastest way to see the whole pipeline - tokenize, train, checkpoint, generate - using the bundled character-level corpus:
 
