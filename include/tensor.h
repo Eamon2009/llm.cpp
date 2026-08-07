@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Eamon Sippy
+ */
+
 #pragma once
 
 #include <algorithm>
@@ -23,13 +28,28 @@
 #include <xmmintrin.h>
 #endif
 
+/**
+ * @brief Dense multi-dimensional float tensor.
+ *
+ * Row-major layout. Supports 1D, 2D, and 3D indexing via at().
+ * AVX2 / SSE / OpenMP vectorization paths available at compile time.
+ */
 struct Tensor
 {
       std::vector<int> shape;
       std::vector<float> data;
 
+      /**
+       * @brief Default constructor. Empty tensor.
+       */
       Tensor() = default;
 
+      /**
+       * @brief Allocate tensor with fill value.
+       *
+       * @param sh   Shape vector.
+       * @param fill Initial value for all elements.
+       */
       Tensor(std::vector<int> sh, float fill = 0.0f) : shape(std::move(sh))
       {
             int total = 1;
@@ -44,6 +64,10 @@ struct Tensor
       Tensor &operator=(const Tensor &) = default;
       Tensor &operator=(Tensor &&) noexcept = default;
 
+      /**
+       * @brief Total element count.
+       * @return Product of all shape dimensions.
+       */
       int numel() const
       {
             int n = 1;
@@ -52,47 +76,49 @@ struct Tensor
             return n;
       }
 
-      int ndim() const
-      {
-            return (int)shape.size();
-      }
+      /**
+       * @brief Number of dimensions.
+       * @return shape.size().
+       */
+      int ndim() const { return (int)shape.size(); }
 
-      float &at(int i)
-      {
-            return data[i];
-      }
-      float at(int i) const
-      {
-            return data[i];
-      }
+      float &at(int i) { return data[i]; }
+      float at(int i) const { return data[i]; }
 
-      float &at(int r, int c)
-      {
-            return data[r * shape[1] + c];
-      }
-      float at(int r, int c) const
-      {
-            return data[r * shape[1] + c];
-      }
+      float &at(int r, int c) { return data[r * shape[1] + c]; }
+      float at(int r, int c) const { return data[r * shape[1] + c]; }
 
-      float &at(int b, int r, int c)
-      {
-            return data[b * shape[1] * shape[2] + r * shape[2] + c];
-      }
+      float &at(int b, int r, int c) { return data[b * shape[1] * shape[2] + r * shape[2] + c]; }
       float at(int b, int r, int c) const
       {
             return data[b * shape[1] * shape[2] + r * shape[2] + c];
       }
 
-      static Tensor zeros(std::vector<int> sh)
-      {
-            return Tensor(sh, 0.0f);
-      }
-      static Tensor ones(std::vector<int> sh)
-      {
-            return Tensor(sh, 1.0f);
-      }
+      /**
+       * @brief Allocate zero-filled tensor.
+       *
+       * @param sh Shape vector.
+       * @return   Zero-filled Tensor.
+       */
+      static Tensor zeros(std::vector<int> sh) { return Tensor(sh, 0.0f); }
 
+      /**
+       * @brief Allocate one-filled tensor.
+       *
+       * @param sh Shape vector.
+       * @return   One-filled Tensor.
+       */
+      static Tensor ones(std::vector<int> sh) { return Tensor(sh, 1.0f); }
+
+      /**
+       * @brief Allocate tensor with normal-distributed values.
+       *
+       * @param sh    Shape vector.
+       * @param mean  Distribution mean.
+       * @param std   Distribution standard deviation.
+       * @param rng   Seeded MT19937.
+       * @return      Normally-distributed Tensor.
+       */
       static Tensor randn(std::vector<int> sh, float mean, float std, std::mt19937 &rng)
       {
             std::normal_distribution<float> dist(mean, std);
@@ -102,11 +128,18 @@ struct Tensor
             return t;
       }
 
-      void fill(float v)
-      {
-            std::fill(data.begin(), data.end(), v);
-      }
+      /**
+       * @brief Fill all elements with value.
+       *
+       * @param v Fill value.
+       */
+      void fill(float v) { std::fill(data.begin(), data.end(), v); }
 
+      /**
+       * @brief Print shape to stdout.
+       *
+       * @param name Optional label prefix.
+       */
       void print_shape(const std::string &name = "") const
       {
             if (!name.empty())
@@ -122,6 +155,13 @@ struct Tensor
       }
 };
 
+/**
+ * @brief Element-wise addition.
+ *
+ * @param a LHS tensor.
+ * @param b RHS tensor. Same shape as a.
+ * @return  Element-wise sum. New allocation.
+ */
 inline Tensor add(const Tensor &a, const Tensor &b)
 {
       assert(a.data.size() == b.data.size());
@@ -166,6 +206,12 @@ inline Tensor add(const Tensor &a, const Tensor &b)
       return c;
 }
 
+/**
+ * @brief In-place element-wise addition.
+ *
+ * @param a Destination tensor. Modified in-place.
+ * @param b RHS tensor. Same shape as a.
+ */
 inline void add_inplace(Tensor &a, const Tensor &b)
 {
       assert(a.data.size() == b.data.size());
@@ -208,6 +254,13 @@ inline void add_inplace(Tensor &a, const Tensor &b)
 #endif
 }
 
+/**
+ * @brief Element-wise scalar multiplication.
+ *
+ * @param a Input tensor.
+ * @param s Scalar multiplier.
+ * @return  Scaled tensor. New allocation.
+ */
 inline Tensor scale(const Tensor &a, float s)
 {
       Tensor c(a.shape);
@@ -251,6 +304,12 @@ inline Tensor scale(const Tensor &a, float s)
       return c;
 }
 
+/**
+ * @brief In-place element-wise scalar multiplication.
+ *
+ * @param a Destination tensor. Modified in-place.
+ * @param s Scalar multiplier.
+ */
 inline void scale_inplace(Tensor &a, float s)
 {
       size_t n = a.data.size();
@@ -292,6 +351,12 @@ inline void scale_inplace(Tensor &a, float s)
 #endif
 }
 
+/**
+ * @brief Element-wise ReLU.
+ *
+ * @param a Input tensor.
+ * @return  ReLU-activated tensor. New allocation.
+ */
 inline Tensor relu(const Tensor &a)
 {
       Tensor c(a.shape);
@@ -335,6 +400,11 @@ inline Tensor relu(const Tensor &a)
       return c;
 }
 
+/**
+ * @brief In-place element-wise ReLU.
+ *
+ * @param a Destination tensor. Modified in-place.
+ */
 inline void relu_inplace(Tensor &a)
 {
       size_t n = a.data.size();
@@ -376,6 +446,12 @@ inline void relu_inplace(Tensor &a)
 #endif
 }
 
+/**
+ * @brief 3D softmax over last dimension.
+ *
+ * @param a [B, T, C].
+ * @return  [B, T, C]. Softmax probabilities. New allocation.
+ */
 inline Tensor softmax3d(const Tensor &a)
 {
       int B = a.shape[0], T = a.shape[1], C = a.shape[2];
@@ -408,6 +484,12 @@ inline Tensor softmax3d(const Tensor &a)
       return out;
 }
 
+/**
+ * @brief 2D softmax over last dimension.
+ *
+ * @param a [T, C].
+ * @return  [T, C]. Softmax probabilities. New allocation.
+ */
 inline Tensor softmax2d(const Tensor &a)
 {
       int T = a.shape[0], C = a.shape[1];
@@ -437,8 +519,17 @@ inline Tensor softmax2d(const Tensor &a)
       return out;
 }
 
-inline Tensor
-layer_norm(const Tensor &x, const Tensor &gamma, const Tensor &beta, float eps = 1e-5f)
+/**
+ * @brief Layer normalization.
+ *
+ * @param x     [B, T, C].
+ * @param gamma [C]. Scale.
+ * @param beta  [C]. Shift.
+ * @param eps   Epsilon for numerical stability.
+ * @return      [B, T, C]. Normalized output. New allocation.
+ */
+inline Tensor layer_norm(const Tensor &x, const Tensor &gamma, const Tensor &beta,
+                         float eps = 1e-5f)
 {
       int B = x.shape[0], T = x.shape[1], C = x.shape[2];
       Tensor out(x.shape);
@@ -471,6 +562,13 @@ layer_norm(const Tensor &x, const Tensor &gamma, const Tensor &beta, float eps =
       return out;
 }
 
+/**
+ * @brief Batched matrix multiplication (3D @ 2D).
+ *
+ * @param a [B, T, D].
+ * @param w [D, E].
+ * @return  [B, T, E]. New allocation.
+ */
 inline Tensor matmul(const Tensor &a, const Tensor &w)
 {
       assert(a.ndim() == 3 && w.ndim() == 2);
@@ -515,6 +613,13 @@ inline Tensor matmul(const Tensor &a, const Tensor &w)
       return out;
 }
 
+/**
+ * @brief Add bias vector to last dimension.
+ *
+ * @param x    [..., E].
+ * @param bias [E].
+ * @return     Bias-added tensor. New allocation.
+ */
 inline Tensor add_bias(const Tensor &x, const Tensor &bias)
 {
       assert(x.shape.back() == bias.shape[0]);
@@ -534,6 +639,13 @@ inline Tensor add_bias(const Tensor &x, const Tensor &bias)
       return out;
 }
 
+/**
+ * @brief Batched matrix multiplication (3D @ 3D).
+ *
+ * @param a [B, T, D].
+ * @param b [B, D, T2].
+ * @return  [B, T, T2]. New allocation.
+ */
 inline Tensor bmm(const Tensor &a, const Tensor &b)
 {
       assert(a.ndim() == 3 && b.ndim() == 3);
@@ -576,6 +688,12 @@ inline Tensor bmm(const Tensor &a, const Tensor &b)
       return out;
 }
 
+/**
+ * @brief Transpose last two dimensions of 3D tensor.
+ *
+ * @param a [B, T, D].
+ * @return  [B, D, T]. New allocation.
+ */
 inline Tensor transpose23(const Tensor &a)
 {
       int B = a.shape[0], T = a.shape[1], D = a.shape[2];
@@ -595,6 +713,12 @@ inline Tensor transpose23(const Tensor &a)
       return out;
 }
 
+/**
+ * @brief Concatenate tensors along last dimension.
+ *
+ * @param ts Vector of [B, T, *] tensors. B and T must match across all.
+ * @return   [B, T, sum(D_i)]. New allocation.
+ */
 inline Tensor cat_last(const std::vector<Tensor> &ts)
 {
       int B = ts[0].shape[0], T = ts[0].shape[1];
@@ -624,6 +748,15 @@ inline Tensor cat_last(const std::vector<Tensor> &ts)
       return out;
 }
 
+/**
+ * @brief Inverted dropout.
+ *
+ * @param x       Input tensor.
+ * @param p       Dropout probability.
+ * @param training No-op when false.
+ * @param rng     Thread-local MT19937.
+ * @return        Scaled tensor (1/(1-p) when kept, 0 when dropped). New allocation when training.
+ */
 inline Tensor dropout(const Tensor &x, float p, bool training, std::mt19937 &rng)
 {
       if (!training || p == 0.0f)
