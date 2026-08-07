@@ -151,16 +151,20 @@ should see something like this
   +-------------------------------------------------------------------------------------+
   | Host Hardware Specs                                                                 |
   +-------------------------------------------------------------------------------------+
-  | Host CPU Device      : AMD Ryzen 5 PRO 3500U w/ Radeon...                           |
+  | Host CPU Device      : AMD Ryzen                                                    |
   | Host RAM (Total)     : 8045 MB                                                      |
   +-------------------------------------------------------------------------------------+
 
-step 1/5000(0.02%) | train loss 7.650238 | val loss 7.652169  | lr 1.00e-06 |  4016.84 ms |  509 tok/s | ram 189.6 MB
-step 2/5000(0.04%) | train loss 7.648808 | val loss 7.652169  | lr 2.00e-06 |  4053.90 ms |  505 tok/s | ram 190.7 MB
-step 3/5000(0.06%) | train loss 7.658056 | val loss 7.652169  | lr 3.00e-06 |  4381.06 ms |  467 tok/s | ram 190.7 MB
-step 4/5000(0.08%) | train loss 7.648185 | val loss 7.652169  | lr 4.00e-06 |  4514.13 ms |  453 tok/s | ram 189.8 MB
-step 5/5000(0.10%) | train loss 7.646149 | val loss 7.652169  | lr 5.00e-06 |  4429.38 ms |  462 tok/s | ram 190.3 MB
-step 6/5000(0.12%) | train loss 7.644379 | val loss 7.652169  | lr 6.00e-06 |  4443.55 ms |  460 tok/s | ram 190.8 MB
+step 1/5000(0.02%) | train loss 7.650238 | val loss 7.652169  | lr 1.00e-06 |  4016.84 ms |  509 tok/s
+ | ram 189.6 MB
+step 2/5000(0.04%) | train loss 7.648808 | val loss 7.652169  | lr 2.00e-06 |  4053.90 ms |  505 tok/s
+| ram 190.7 MB
+step 3/5000(0.06%) | train loss 7.658056 | val loss 7.652169  | lr 3.00e-06 |  4381.06 ms |  467 tok/s
+| ram 190.7 MB
+step 4/5000(0.08%) | train loss 7.648185 | val loss 7.652169  | lr 4.00e-06 |  4514.13 ms |  453 tok/s
+| ram 189.8 MB
+step 5/5000(0.10%) | train loss 7.646149 | val loss 7.652169  | lr 5.00e-06 |  4429.38 ms |  462 tok/s
+| ram 190.3 MB
 ```
 
 This trains from scratch on `data/input.txt` and writes the best checkpoint to `best_model.bin`. Once you have a checkpoint, generate or chat with it:
