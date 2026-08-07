@@ -18,10 +18,10 @@ The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU trai
 | 3 | 2.98 min | 3.28 Val Loss (~0.748 BPB) | 124M (8x H100) | Feb 2025 | Keller Jordan et al. (Modded-NanoGPT) |
 | 4 | 72 hours | 22.7 PPL (~0.85 BPB) | 125M (32x A100) | Feb 2024 | Meta (MobileLLM-125M) |
 | 5 | ~24 hours | ~1.02 BPB | 135M (64x H100) | Jul 2024 | Hugging Face (SmolLM-135M) |
-| 6 | 61.3 min | 0.7176 | 10.82M (T4) | Mar 2026 | @Eamon2009 |
-| 7 | 6.1 min | 0.9250 | 1.99M (T4) | Feb 2026 | @Eamon2009 |
-| 8 | 39.4 min | 1.3145 | 0.82M (CPU) | July 2026 | @Eamon2009 |
-| 9 | 76.2 min | 1.6371 | 0.82M (CPU) | Jan 2026 | @Eamon2009 |
+| 6 | 61.3 min | 0.7176 | 10.82M (T4) | Mar 2026 | Eamon |
+| 7 | 6.1 min | 0.9250 | 1.99M (T4) | Feb 2026 | Eamon |
+| 8 | 39.4 min | 1.3145 | 0.82M (CPU) | July 2026 | Eamon |
+| 9 | 76.2 min | 1.6371 | 0.82M (CPU) | Jan 2026 | Eamon |
 
 More broadly, the primary contribution of this work lies in its absolute transparency. Every gradient in the backward pass is explicitly written and readable, and every tensor operation is a standard C++ function. By exposing exactly what frameworks like PyTorch compute under the hood, this implementation provides a clear educational pathway. We believe that this fundamental understanding is the true foundation of genuine expertise in deep learning.
 The point of this repo is the C++ core. The PyTorch exist to make the model usable, but if you're here to ***train a GPT without a framework*** doing the work for you, [include/backward.h](include/backward.h) is where to start seeing optimization without torch.
