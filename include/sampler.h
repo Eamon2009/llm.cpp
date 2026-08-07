@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Eamon Sippy
+ */
+
 #pragma once
 
 #include "config/config.h"
@@ -5,28 +10,35 @@
 #include <string>
 #include <vector>
 
-// Holds all parameters that control token sampling at inference time.
-// Fields can be set from CLI flags or left at config.h defaults.
+/**
+ * @brief Inference-time sampling hyperparameters.
+ */
 struct SamplerParams
 {
-      float rep_penalty;         // values above 1.0 reduce repeated tokens
-      int rep_window;            // how many recent tokens to scan for repeats
-      std::string system_prompt; // text prepended before every user turn in chat
+      float rep_penalty;         // >1.0 reduces repeated tokens
+      int rep_window;            // Recent token window for repetition check
+      std::string system_prompt; // Prepended to each user turn in chat mode
 
+      /**
+       * @brief Construct with config.h defaults.
+       */
       SamplerParams()
-            : rep_penalty(DEFAULT_REP_PENALTY), rep_window(DEFAULT_REP_WINDOW), system_prompt("")
+          : rep_penalty(DEFAULT_REP_PENALTY), rep_window(DEFAULT_REP_WINDOW), system_prompt("")
       {
       }
 };
 
-// Adjust raw logits to make recently seen tokens less likely to appear again.
-// Tokens found in the recent context window have their logit reduced:
-//   positive logits are divided by rep_penalty
-//   negative logits are multiplied by rep_penalty
-// This matches the formula used in llama.cpp repetition penalty.
-// Call this on the last time step logits before softmax.
-inline void apply_rep_penalty(std::vector<float> &logits,
-                              const std::vector<int> &context,
+/**
+ * @brief Apply repetition penalty to logits.
+ *
+ * Positive logits divided by rep_penalty; negative logits multiplied.
+ * Matches llama.cpp formula. Call before softmax.
+ *
+ * @param logits [vocab_size]. In-place modified.
+ * @param context Recent token history.
+ * @param params  SamplerParams with rep_penalty and rep_window.
+ */
+inline void apply_rep_penalty(std::vector<float> &logits, const std::vector<int> &context,
                               const SamplerParams &params)
 {
       if (params.rep_penalty <= 1.0f || context.empty())
