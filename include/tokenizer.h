@@ -1,58 +1,18 @@
-// @Eamon2009
-/*// -------------------------------------------------------
-//  overview and some NOTES
-//-----------------------------------------------------------
-//
-// This header file has a dual-mode Byte-Pair Encoding
-// (BPE) tokenizer and dataset loader (DataLoader)  for repo llm.cpp
-// train pipeline. It supports raw text corpus training and
-// memory-mapped (mmap) binary shards also training.
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Eamon Sippy
+ */
 
-// 1. text Mode: Reads raw text files, trains a BPE tokenizer from scratch up to a
-//    target vocabulary size, caches vocabularies to disk (.tokenizer.bin), and
-//    splits tokens into contiguous train/validation memory vectors.
-// 2. SHARDED Mode: Bypasses heavy RAM overhead by using  memory-mapping
-//    (POSIX mmap / Win32 File Mapping) to stream pre-tokenized binary shards (.bin).
-//    Shards utilize a fixed 1KB header followed by a flat stream of uint16_t
-//    token IDs, capping vocabulary support at 65,536 entries.
-// notes:
-// * Platform-Specific Memory Mapping: look `MMapShard::open()` for platform
-//    branches. Windows uses CreateFileMappingA/MapViewOfFile, while POSIX systems
-//    rely on open(), mmap(), and madvise(MADV_RANDOM) to optimize non-sequential
-//    batch sampling hints for kerenels
-// * Move-Only Semantics: `MMapShard` implements explicit move-only semantics
-//    (`= delete` on copy constructors/operators) to safely manage file descriptors
-//    and resource handles without double-free errors
-// * Cache-Aligned Index Structures: `BPEIndex` is explicitly alignas(16) to ensure
-//    optimal L1/L2 cache line utilization during fast doubly-linked list traversal
-//    in BPE merging routine
-// * Packed Hash Keys: Pair keys for merge ranks are packed into a single uint64_t
-//    using bit shifts (`((uint64_t)left << 32) | (uint32_t)right`) to optimize
-//    hash map lookups (`std::unordered_map`)
-// * Parallelized Batch Sampling: OpenMP (`#pragma omp parallel for`) is leveraged
-//    across batch sampling (`get_batch_text` and `get_batch_sharded`) and base encoding
-//    to parallelize random number generation and index lookups safely using thread-local
-//    random engines (std::mt19937)
-
-Shard Capacity Limit: Because shards serialize tokens as `uint16_t`,
-vocabularies exceeding 65,536 entries will cause a hard runtime exception
-(`write_shards` check). Do not alter token datatype widths without redesigning
-the header structure (`SHARD_HEADER_INTS`).
-
-Boundary Conditions in Sharded Sampling: `get_batch_sharded` contains both a
-fast path (contiguous memory inside a single shard) and a rare path (blocks
-crossing shard boundaries via prefix-sum lookups using `std::upper_bound`).
-Changes to indexing logic must maintain safety against off-by-one segment faults.
-
-Mutability and Thread Safety: While data streaming via mmap is read-only and
-inherently thread-safe across multiple worker threads, ensure that external
-callers do not concurrently mutate vocabulary mappings (`token_to_id`, `vocab`)
-while inference/encoding or training loops are executing.
-// ----------------------------------------==--------------------------------------*/
+/**
+ * @brief BPE tokenizer and dataset loader (TEXT or SHARDED mode).
+ *
+ * TEXT mode: trains BPE from raw text, stores in RAM.
+ * SHARDED mode: memory-maps pre-tokenized binary shards.
+ * Vocab limited to 65536 entries for uint16_t shard encoding.
+ */
 
 #pragma once
 #include "config/config.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -141,8 +101,9 @@ struct DataLoader
       {
             return ((uint64_t)(uint32_t)left << 32) | (uint32_t)right;
       }
-      // mmap'd shard: one .bin file, read-only, paged in lazily by the OS.
-      // Move-only (owns an fd + mapping).
+      /**
+       * @brief Memory-mapped shard. Move-only (owns fd + mapping).
+       */
 
       struct MMapShard
       {
@@ -192,6 +153,9 @@ struct DataLoader
 
             ~MMapShard() { release(); }
 
+            /**
+             * @brief Release all OS resources.
+             */
             void release()
             {
 #ifdef _WIN32
@@ -213,6 +177,12 @@ struct DataLoader
                   map_base = nullptr;
             }
 
+            /**
+             * @brief Open and validate a shard file.
+             *
+             * @param p File path.
+             * @throws std::runtime_error on open failure, bad magic, or size mismatch.
+             */
             void open(const std::string &p)
             {
                   path = p;
@@ -277,12 +247,20 @@ struct DataLoader
             }
       };
 
+      /**
+       * @brief Shard collection with prefix-sum indexing for O(1) token lookup.
+       */
       struct ShardedSplit
       {
             std::vector<MMapShard> shards;
             std::vector<uint64_t> prefix;
             uint64_t total_tokens{0};
 
+            /**
+             * @brief Open and add a shard to this split.
+             *
+             * @param path Shard file path.
+             */
             void add(const std::string &path)
             {
                   MMapShard s;
@@ -291,6 +269,10 @@ struct DataLoader
                   shards.push_back(std::move(s));
             }
 
+            /**
+             * @brief Build prefix-sum over shard token counts.
+             * Must be called after all shards are added.
+             */
             void build_prefix()
             {
                   prefix.assign(shards.size() + 1, 0);
@@ -298,12 +280,24 @@ struct DataLoader
                         prefix[i + 1] = prefix[i] + shards[i].num_tokens;
             }
 
+            /**
+             * @brief Locate shard index for global token position.
+             *
+             * @param global_idx Global token index.
+             * @return           Shard index.
+             */
             inline size_t locate(uint64_t global_idx) const
             {
                   auto it = std::upper_bound(prefix.begin(), prefix.end(), global_idx);
                   return (size_t)(it - prefix.begin()) - 1;
             }
 
+            /**
+             * @brief Read token at global position.
+             *
+             * @param global_idx Global token index.
+             * @return           Token ID.
+             */
             inline int token_at(uint64_t global_idx) const
             {
                   size_t s = locate(global_idx);
@@ -315,6 +309,13 @@ struct DataLoader
       ShardedSplit shard_train;
       ShardedSplit shard_val;
 
+      /**
+       * @brief Load dataset from file or directory.
+       *
+       * @param path          File path (.txt) or directory path (shards).
+       * @param target_vocab  Target vocabulary size for BPE training.
+       * @param train_split   Fraction of data for training (remainder for validation).
+       */
       void load(const std::string &path, int target_vocab = BPE_VOCAB_SIZE,
                 double train_split = TRAIN_SPLIT)
       {
@@ -328,6 +329,14 @@ struct DataLoader
             }
       }
 
+      /**
+       * @brief Load raw text, train BPE, split into train/val.
+       *
+       * @param path         Text file path.
+       * @param target_vocab Target vocabulary size.
+       * @param train_split  Training data fraction.
+       * @throws std::runtime_error on file error or dataset too small.
+       */
       void load_text(const std::string &path, int target_vocab = BPE_VOCAB_SIZE,
                      double train_split = TRAIN_SPLIT)
       {
@@ -376,6 +385,12 @@ struct DataLoader
             std::cout << "[DATA]  Val tokens   : " << val_data.size() << "\n";
       }
 
+      /**
+       * @brief Load pre-tokenized binary shards.
+       *
+       * @param dir Directory containing train_*.bin and val_*.bin shards.
+       * @throws std::runtime_error on missing shards or size mismatch.
+       */
       void load_shards(const std::string &dir)
       {
             mode = DataMode::SHARDED;
@@ -426,11 +441,23 @@ struct DataLoader
                       std::to_string(BLOCK_SIZE));
       }
 
+      /**
+       * @brief Encode text to token IDs.
+       *
+       * @param text Input string.
+       * @return     Token ID sequence.
+       */
       std::vector<int> encode(const std::string &text) const
       {
             return apply_merges(base_encode(text));
       }
 
+      /**
+       * @brief Decode token IDs to text.
+       *
+       * @param ids Token ID sequence.
+       * @return    Reconstructed string.
+       */
       std::string decode(const std::vector<int> &ids) const
       {
             std::string out;
@@ -441,6 +468,15 @@ struct DataLoader
             return out;
       }
 
+      /**
+       * @brief Sample a training or validation batch.
+       *
+       * @param split      "train" or "val".
+       * @param batch_size Number of sequences.
+       * @param block_size Sequence length per sample.
+       * @param rng        Seeded MT19937 for sampling.
+       * @return           Pair of {input tokens, target tokens}. Both [batch_size * block_size].
+       */
       std::pair<std::vector<int>, std::vector<int>>
       get_batch(const std::string &split, int batch_size, int block_size, std::mt19937 &rng) const
       {
@@ -449,6 +485,13 @@ struct DataLoader
             return get_batch_text(split, batch_size, block_size, rng);
       }
 
+      /**
+       * @brief Write in-memory train/val data to binary shards.
+       *
+       * @param out_dir          Output directory.
+       * @param shard_size_tokens Tokens per shard.
+       * @throws std::runtime_error if vocab exceeds 65536 or data is empty.
+       */
       void write_shards(const std::string &out_dir,
                         uint64_t shard_size_tokens = SHARD_SIZE_TOKENS) const
       {
@@ -470,6 +513,11 @@ struct DataLoader
             std::cout << "[SHARD] Wrote shards + tokenizer.bin to " << out_dir << "\n";
       }
 
+      /**
+       * @brief Serialize vocabulary and merge table to binary file.
+       *
+       * @param path Output file path.
+       */
       void save_vocab(const std::string &path) const
       {
             std::ofstream f(path, std::ios::binary);
@@ -494,6 +542,12 @@ struct DataLoader
             }
       }
 
+      /**
+       * @brief Deserialize vocabulary and merge table from binary file.
+       *
+       * @param path Input file path.
+       * @throws std::runtime_error on read failure or bad magic.
+       */
       void load_vocab(const std::string &path)
       {
             std::ifstream f(path, std::ios::binary);
