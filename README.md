@@ -105,7 +105,9 @@ graph TD
 ---
 
 ## quick start (CPU)
+<h1 align="center">
 <img width="730" height="181" alt="image" src="https://github.com/user-attachments/assets/d510c555-780c-4449-b54b-55ec46bb8d23" />
+</h1>
 
 
 The fastest way to see the whole pipeline - tokenize, train, checkpoint, generate - using the bundled character-level corpus:
