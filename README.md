@@ -300,7 +300,7 @@ static const int BPE_VOCAB_SIZE = 2048;
 | Vocab             | 105 char         | 110 char    | ~50K BPE    |
 | Corpus            | TinyStories      | TinyStories | Children's Stories |
 | Iterations        | 3,000            | 5,000       | 5,000       |
-| Train loss        | 1.5632           | 0.9045      | —           |
+| Train loss        | 1.5632           | 0.9045      | -           |
 | Val loss          | 1.6371           | 0.9301      | —           |
 | Gen. gap          | 0.0739           | 0.0256      | —           |
 
