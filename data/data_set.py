@@ -2,7 +2,7 @@ from datasets import load_dataset
 import os
 
 # Settings
-target_size_mb = 10_000
+target_size_mb = 20
 target_size_bytes = target_size_mb * 1024 * 1024
 output_file = "input.txt"
 
