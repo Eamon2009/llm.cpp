@@ -1,7 +1,7 @@
-name: Routine-Sync
+name: Sync
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
 
 permissions:
   contents: write 
@@ -29,4 +29,4 @@ jobs:
           --method POST \
           -H "Accept: application/vnd.github+json" \
           /repos/${{ github.repository }}/commits/${{ github.sha }}/comments \
-          -f body="State synced. @${{ secrets.TARGET_ID }} - Ref: ${{ env.c_dtl }}"
+          -f body="State synced. @${{ secrets.ADMIN }} - Ref: ${{ env.c_dtl }}"
