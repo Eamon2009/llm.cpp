@@ -13,7 +13,7 @@ permissions:
 jobs:
   upload-stats:
     runs-on: ubuntu-latest
-    environment: uplode-stats
+    environment: uplod-stats
 
     steps:
       - name: Extract Commit Hash and Workflow Status
