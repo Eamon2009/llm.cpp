@@ -9,8 +9,7 @@
 </h1>
 
 
-llm.cpp implements language models in dependency-free C++, eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[llm.mm](llm.mm) and the [include/](include) directory also a ***token level [BPE]*** [tokenizer.h](include/tokenizer.h) implementation inside [include](include). With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
-The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU training on 31.4 million characters, demonstrating that character-level language modeling at this scale is highly tractable on commodity hardware without external dependencies. On a GPU (CUDA/bfloat16), a validation loss of 2.3918 is reached in under 83 minutes, achieving a peak throughput of 19.6k tokens per second.
+**llm.cpp** trains real language models in pure C++ - no PyTorch, no Python, no dependencies whatsoever. Just a single decoder-only GPT built from scratch: custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and a hand-rolled backward pass with AdamW. Every gradient is derived by hand and written out explicitly  no autograd magic, no black boxes.The whole thing lives in just three places: [main.cpp](main.cpp), [llm.mm](llm.mm), and the [include/](include) directory. There's also a token-level BPE tokenizer tucked away in [include/tokenizer.h](include/tokenizer.h), built the same way from the ground up. On the CPU, it trains to a validation loss of **1.6371 nats** in about **76 minutes** on **31.4 million characters**. That's character-level language modeling, running comfortably on ordinary hardware, with nothing but C++ and patience.On GPU with CUDA and bfloat16, it hits **2.3918 validation loss** in under **83 minutes**, peaking at **19.6k tokens per second**. Not bad for zero dependencies.
 
 ## Board
 | S.No. | time | val_bpb / Metric | scale | Date | Contributors |
@@ -25,8 +24,9 @@ The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU trai
 | 8 | 39.4 min | 1.3145 | 0.82M (CPU) | July 2026 | Eamon |
 | 9 | 76.2 min | 1.6371 | 0.82M (CPU) | Jan 2026 | Eamon |
 
-More broadly, the primary contribution of this work lies in its absolute transparency. Every gradient in the backward pass is explicitly written and readable, and every tensor operation is a standard C++ function. By exposing exactly what frameworks like PyTorch compute under the hood, this implementation provides a clear educational pathway. We believe that this fundamental understanding is the true foundation of genuine expertise in deep learning.
-The point of this repo is the C++ core. The PyTorch exist to make the model usable, but if you're here to ***train a GPT without a framework*** doing the work for you, [include/backward.h](include/backward.h) is where to start seeing optimization without torch.
+More broadly, this work is really about **transparency**. Every gradient in the backward pass is written out by hand, plain as day. Every tensor operation is just a standard C++ function you can read and trace. No hidden abstractions, no framework magic — you see exactly what PyTorch normally does under the hood. We think that kind of fundamental understanding is what actually builds real expertise in deep learning, not just the ability to call `.backward()`.
+
+The heart of this repo is the C++ core. The PyTorch scripts are there to make the model *usable*, but if you're here to **train a GPT without a framework holding your hand**, start with [include/backward.h](include/backward.h). That's where you'll see optimization happen without `torch` doing the heavy lifting.
 
 ---
 
