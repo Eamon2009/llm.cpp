@@ -38,15 +38,8 @@ For C++ changes:
 - Be careful with tensor shapes, bounds, and ownership.
 - Add comments only where the math or control flow is not obvious.
 
-For Python changes:
-
-- Keep backend behavior explicit and local-development friendly.
-- Avoid broad exception swallowing around model loading or inference.
-- Treat model paths, datasets, and request payloads as untrusted inputs.
-
-
 ## Documentation Style
 
-Use concrete commands and paths. llm.cpp has multiple runtime paths, so say exactly which path a command belongs to: C++, PyTorch.
+Use concrete commands and paths. llm.cpp has multiple runtime paths, so say exactly which path a command belongs to: C++.
 
 When documenting training results, include the hardware, dataset, iteration count, elapsed time, and validation metric so results can be compared fairly.
