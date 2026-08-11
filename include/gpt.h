@@ -1,4 +1,10 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Eamon Sippy
+ */
+
 #pragma once
+
 #include "block.h"
 #include "config/config.h"
 #include "embedding.h"
@@ -11,6 +17,14 @@
 #include <iostream>
 #include <random>
 #include <vector>
+
+/**
+ * @brief Cross-entropy loss for language modeling.
+ *
+ * @param logits  [B * T, V]. Raw logits.
+ * @param targets [B * T]. Ground-truth token indices.
+ * @return        Scalar mean loss.
+ */
 inline float cross_entropy(const Tensor &logits, const std::vector<int> &targets)
 {
       int BT = logits.shape[0];
@@ -18,7 +32,6 @@ inline float cross_entropy(const Tensor &logits, const std::vector<int> &targets
       float loss = 0.0f;
       for (int i = 0; i < BT; ++i)
       {
-            // log-softmax + NLL
             float maxv = -1e30f;
             for (int v = 0; v < V; ++v)
                   maxv = std::max(maxv, logits.at(i, v));
@@ -31,26 +44,37 @@ inline float cross_entropy(const Tensor &logits, const std::vector<int> &targets
       return loss / (float)BT;
 }
 
-// ------------------------------------------------------------------
-// AdamW optimiser (simple, stateful)
-// ------------------------------------------------------------------
+/**
+ * @brief AdamW optimizer with first and second moment estimates.
+ */
 struct AdamW
 {
       float lr, beta1, beta2, eps, weight_decay;
       int step_count;
       std::vector<float *> params;
       std::vector<int> sizes;
-      std::vector<std::vector<float>> m, v; // first/second moment
+      std::vector<std::vector<float>> m, v;
 
-      AdamW(float lr_ = 3e-4f,
-            float beta1_ = 0.9f,
-            float beta2_ = 0.999f,
-            float eps_ = 1e-8f,
+      /**
+       * @brief Construct with hyperparameters.
+       *
+       * @param lr_          Learning rate.
+       * @param beta1_       First moment decay.
+       * @param beta2_       Second moment decay.
+       * @param eps_         Epsilon for numerical stability.
+       * @param wd           Weight decay coefficient.
+       */
+      AdamW(float lr_ = 3e-4f, float beta1_ = 0.9f, float beta2_ = 0.999f, float eps_ = 1e-8f,
             float wd = 0.0f)
-            : lr(lr_), beta1(beta1_), beta2(beta2_), eps(eps_), weight_decay(wd), step_count(0)
+          : lr(lr_), beta1(beta1_), beta2(beta2_), eps(eps_), weight_decay(wd), step_count(0)
       {
       }
 
+      /**
+       * @brief Register a parameter vector for optimization.
+       *
+       * @param p Parameter vector. Pointer stored; caller owns memory.
+       */
       void add_param(std::vector<float> &p)
       {
             params.push_back(p.data());
@@ -59,7 +83,11 @@ struct AdamW
             v.emplace_back(p.size(), 0.0f);
       }
 
-      // grads must be passed in the same order as params were added
+      /**
+       * @brief Single optimization step.
+       *
+       * @param grads Per-parameter gradients. Same order as add_param() calls.
+       */
       void step(std::vector<std::vector<float>> &grads)
       {
             ++step_count;
@@ -82,9 +110,12 @@ struct AdamW
       }
 };
 
-// ------------------------------------------------------------------
-// GPTLanguageModel
-// ------------------------------------------------------------------
+/**
+ * @brief GPT language model.
+ *
+ * Token + position embeddings, N Transformer blocks, final LayerNorm,
+ * and output projection. Not thread-safe across forward/generate calls.
+ */
 struct GPTLanguageModel
 {
       std::mt19937 rng;
@@ -96,15 +127,31 @@ struct GPTLanguageModel
       LayerNorm ln_f;
       Linear lm_head; // [n_embd, vocab_size]
 
+      /**
+       * @brief Construct and initialize all weights.
+       *
+       * @param vocab   Vocabulary size.
+       * @param embd    Embedding dimension.
+       * @param heads   Number of attention heads.
+       * @param layers  Number of Transformer blocks.
+       * @param blk_sz  Maximum sequence length (block size).
+       * @param seed    PRNG seed for weight init.
+       *
+       * @throws std::invalid_argument if embd % heads != 0.
+       */
       GPTLanguageModel(int vocab, int embd, int heads, int layers, int blk_sz, unsigned int seed)
-            : vocab_size(vocab), n_embd(embd), n_head(heads), n_layer(layers), block_size(blk_sz),
-              rng(seed), token_emb(vocab, embd, rng), pos_emb(blk_sz, embd, rng), ln_f(embd),
-              lm_head(embd, vocab, true, rng)
+          : vocab_size(vocab), n_embd(embd), n_head(heads), n_layer(layers), block_size(blk_sz),
+            rng(seed), token_emb(vocab, embd, rng), pos_emb(blk_sz, embd, rng), ln_f(embd),
+            lm_head(embd, vocab, true, rng)
       {
             for (int i = 0; i < layers; ++i)
                   blocks.emplace_back(embd, heads, rng);
       }
 
+      /**
+       * @brief Total trainable parameters.
+       * @return Sum of all submodule parameter counts.
+       */
       int num_params() const
       {
             int n = token_emb.num_params() + pos_emb.num_params() + ln_f.num_params() +
@@ -114,41 +161,35 @@ struct GPTLanguageModel
             return n;
       }
 
-      // ----------------------------------------------------------------
-      // forward
-      //   idx    : flat [B*T] token indices
-      //   B, T   : batch and sequence length
-      //   targets: flat [B*T] next-token indices (empty = inference)
-      //   returns: (logits [B*T, vocab], loss)  loss=0 when no targets
-      // ----------------------------------------------------------------
-      std::pair<Tensor, float> forward(const std::vector<int> &idx,
-                                       int B,
-                                       int T,
-                                       const std::vector<int> &targets,
-                                       bool training)
+      /**
+       * @brief Forward pass.
+       *
+       * @param idx      [B * T]. Flat token indices.
+       * @param B        Batch size.
+       * @param T        Sequence length.
+       * @param targets  [B * T]. Ground-truth next-token indices. Empty for inference.
+       * @param training Enables dropout when true.
+       * @return         Pair of {logits [B * T, vocab_size], loss}. Loss=0 when no targets.
+       */
+      std::pair<Tensor, float> forward(const std::vector<int> &idx, int B, int T,
+                                       const std::vector<int> &targets, bool training)
       {
-            // token + position embeddings
             Tensor tok = token_emb.forward(idx, B, T); // [B, T, n_embd]
             Tensor pos = pos_emb.forward_pos(T);       // [1, T, n_embd]
 
-            // broadcast pos over batch
             Tensor x({B, T, n_embd});
             for (int b = 0; b < B; ++b)
                   for (int t = 0; t < T; ++t)
                         for (int d = 0; d < n_embd; ++d)
                               x.at(b, t, d) = tok.at(b, t, d) + pos.at(0, t, d);
 
-            // transformer blocks
             for (auto &blk : blocks)
                   x = blk.forward(x, training, rng);
 
-            // final layer norm
             x = ln_f.forward(x);
 
-            // lm_head  logits [B, T, vocab]
-            Tensor logits3d = lm_head.forward(x); // [B, T, vocab]
+            Tensor logits3d = lm_head.forward(x); // [B, T, vocab_size]
 
-            // reshape to [B*T, vocab]
             Tensor logits({B * T, vocab_size});
             for (int i = 0; i < B * T; ++i)
                   for (int v = 0; v < vocab_size; ++v)
@@ -161,30 +202,31 @@ struct GPTLanguageModel
             return {logits, loss};
       }
 
-      // ----------------------------------------------------------------
-      // generate  (greedy autoregressive sampling with temperature=1)
-      // ----------------------------------------------------------------
+      /**
+       * @brief Autoregressive token generation (multinomial sampling).
+       *
+       * @param context        Initial token sequence.
+       * @param max_new_tokens Number of tokens to generate.
+       * @return               Extended token sequence (context + generated).
+       */
       std::vector<int> generate(std::vector<int> context, int max_new_tokens)
       {
             std::uniform_real_distribution<float> udist(0.0f, 1.0f);
 
             for (int step = 0; step < max_new_tokens; ++step)
             {
-                  // crop context to block_size
                   int T = std::min((int)context.size(), block_size);
                   std::vector<int> ctx(context.end() - T, context.end());
 
                   std::pair<Tensor, float> forward_result =
-                        forward(ctx, 1, T, std::vector<int>(), false);
+                      forward(ctx, 1, T, std::vector<int>(), false);
                   Tensor logits = forward_result.first;
 
-                  // pick last time-step logits  [vocab]
                   int offset = (T - 1) * vocab_size;
                   std::vector<float> last_logits(vocab_size);
                   for (int v = 0; v < vocab_size; ++v)
                         last_logits[v] = logits.data[offset + v];
 
-                  // softmax
                   float maxv = *std::max_element(last_logits.begin(), last_logits.end());
                   float sumv = 0.0f;
                   for (auto &lv : last_logits)
@@ -195,7 +237,6 @@ struct GPTLanguageModel
                   for (auto &lv : last_logits)
                         lv /= sumv;
 
-                  // multinomial sample
                   float r = udist(rng);
                   float cumsum = 0.0f;
                   int next_tok = vocab_size - 1;
@@ -213,9 +254,11 @@ struct GPTLanguageModel
             return context;
       }
 
-      // ----------------------------------------------------------------
-      // save / load weights
-      // ----------------------------------------------------------------
+      /**
+       * @brief Serialize all weights to binary file.
+       *
+       * @param path Output file path. Overwrites if exists.
+       */
       void save(const std::string &path) const
       {
             std::ofstream f(path, std::ios::binary);
@@ -233,6 +276,11 @@ struct GPTLanguageModel
             std::cout << "[SAVE]  Weights written to " << path << "\n";
       }
 
+      /**
+       * @brief Deserialize all weights from binary file.
+       *
+       * @param path Input file path.
+       */
       void load(const std::string &path)
       {
             std::ifstream f(path, std::ios::binary);
