@@ -12,7 +12,7 @@ Security fixes are considered for:
 | Latest tagged release | Yes |
 | Older releases | Best effort |
 
-If a fix affects both the C++ runtime and the Python or web paths, please call that out in the report so the patch can cover the whole stack.
+If a fix affects the C++ runtime please call that out in the report so the patch can cover the whole thing
 
 ## Reporting a Vulnerability
 
@@ -22,7 +22,7 @@ Preferred reporting path:
 
 1. Use GitHub's private vulnerability reporting or security advisory flow for this repository, if available.
 2. Include enough detail to reproduce the issue locally.
-3. Share the affected component: C++ runtime, Python engine, FastAPI backend, React frontend, packaging, model files, or documentation.
+3. Share the affected component: C++ runtime model files or documentation.
 
 Helpful details include:
 
@@ -40,10 +40,6 @@ You should receive an acknowledgement as soon as the report is reviewed. Fix tim
 In scope examples:
 
 - Memory safety bugs in the native C++ runtime.
-- Crashes or denial-of-service issues caused by malformed input files, prompts, checkpoints, or HTTP requests.
-- Backend API behavior that exposes local files, environment variables, model paths, prompts, sessions, or generated text unexpectedly.
-- Unsafe dependency updates or dependency confusion risks in Python, npm, or GitHub Actions.
-- Cross-site scripting, service worker, or PWA issues in the frontend.
 - Secret leakage through logs, generated artifacts, bundled files, or example configuration.
 
 Out of scope examples:
