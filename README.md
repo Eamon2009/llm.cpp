@@ -171,6 +171,60 @@ llm.exe [data_path] [--generate] [--chat] [--chat-tokens N]
 ```
 ---
 
+## How the Training Actually Works
+
+In `backward.h`, every gradient is computed . No autograd. No `.backward()` magic. Just C++ loops that do exactly what the math says.
+
+### Here
+
+| File | What It Does |
+|------|-------------|
+| `backward.h` | The full backward pass, the optimizer, and all the gradient bookkeeping. This is where the model actually learns. |
+
+### The Gradient Accumulators
+
+Before we can update anything, we need somewhere to store the gradients. The `Grad*` structs are just containers - `GradLinear` for weight and bias gradients, `GradEmbedding` for lookup tables, `GradLayerNorm` for scale and shift, and so on. They nest together: `GradHead` holds three `GradLinear`s (for Q, K, V), `GradMHA` holds all the heads plus the output projection, `GradBlock` holds the attention + feedforward + two layer norms, and `Grads` holds the whole model. Each one has a `zero()` method to clear gradients between batches.
+
+### The Activation Cache
+
+To compute gradients, you need to remember what happened during the forward pass. The `Saved*` structs stash exactly that: pre-softmax attention scores, post-softmax weights, dropout masks, ReLU inputs, layer norm means and inverse standard deviations, and every intermediate tensor. `SavedForward` is the big one - it captures the entire forward pass so the backward pass can walk back through it in reverse.
+
+### The Backward Functions
+
+Each operation has its own backward function, and they chain together:
+
+- **`backward_cross_entropy`** - starts the whole thing. Takes the raw logits and the target tokens, computes softmax probabilities, subtracts 1 from the correct class, and divides by batch size. This is `dLoss/dLogits`.
+- **`backward_linear`** - given the upstream gradient, the input `x`, and the weight matrix `W`, computes gradients for `W` and `b` (if present) and passes the gradient back to `x`.
+- **`backward_layernorm`** - the full LayerNorm backward from the Ba et al. paper. Computes `dgamma`, `dbeta`, and the input gradient using the cached mean and inverse standard deviation.
+- **`backward_relu`** - dead simple: if the pre-activation was negative, the gradient is zero. Otherwise it passes through unchanged.
+- **`backward_dropout`** - scales the surviving gradients by `1/(1-p)` and zeros out the dropped ones.
+- **`backward_bmm`** - batched matrix multiply backward. Uses the standard chain rule: `dA = dOut @ B^T`, `dB = A^T @ dOut`.
+- **`backward_softmax3d`** - the trickiest one. For each row, computes `wei * (dwei - sum(wei * dwei))`. This is the Jacobian of softmax in closed form.
+- **`backward_cat_last`** - splits the concatenated multi-head gradient back into per-head tensors.
+
+### The Full Backward Pass
+
+The `backward()` function is the heart of it. It walks the model in reverse:
+
+1. **Loss gradient** → `dlogits` from `backward_cross_entropy`
+2. **LM head** → `backward_linear`, then `backward_layernorm`
+3. **For each block (in reverse)**:
+   - FFN branch: dropout ->linear -> ReLU -> linear >- layer norm
+   - Residual add
+   - MHA branch: dropout> linear -> split heads -> for each head: dropout backward -> softmax backward ->scale -> Q/K/V backward -> accumulate into input gradient
+   - Residual add
+   - Layer norm backward
+4. **Embeddings** -> gradients flow into both token and position embedding tables
+
+Every gradient is accumulated, not overwritten. This matters if you're doing gradient accumulation across multiple mini-batches.
+
+### The Optimizer
+
+`AdamWState` tracks first and second moment estimates (`m` and `v`) for every parameter. `build_optimizer()` registers all model parameters in order - embeddings, then each block's Q/K/V/projections, feedforward weights/biases, layer norm params, and finally the output head. `apply_grads()` does the actual update: bias-corrected moments, then `param -= lr * m_hat / (sqrt(v_hat) + eps)`. No weight decay in this version - it's vanilla Adam.
+```python
+loss.backward() # who???
+```
+
 ## File structure
 
 ```text
