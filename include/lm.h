@@ -1,3 +1,8 @@
+/*
+ * SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Eamon Sippy
+ */
+
 #pragma once
 
 #include "block.h"
@@ -14,9 +19,13 @@
 #include <random>
 #include <vector>
 
-// Cross-entropy loss for language modelling.
-// logits has shape BT by vocab_size (flat row-major).
-// targets is a flat list of next-token indices of length BT.
+/**
+ * @brief Cross-entropy loss for language modeling.
+ *
+ * @param logits  [B * T, V]. Raw logits.
+ * @param targets [B * T]. Ground-truth token indices.
+ * @return        Scalar mean loss.
+ */
 inline float cross_entropy(const Tensor &logits, const std::vector<int> &targets)
 {
       int BT = logits.shape[0];
@@ -36,7 +45,9 @@ inline float cross_entropy(const Tensor &logits, const std::vector<int> &targets
       return loss / (float)BT;
 }
 
-// AdamW optimiser: first and second moment estimates with weight decay.
+/**
+ * @brief AdamW optimizer with first and second moment estimates.
+ */
 struct AdamW
 {
       float lr, beta1, beta2, eps, weight_decay;
@@ -45,12 +56,26 @@ struct AdamW
       std::vector<int> sizes;
       std::vector<std::vector<float>> m, v;
 
+      /**
+       * @brief Construct with hyperparameters.
+       *
+       * @param lr_    Learning rate.
+       * @param beta1_ First moment decay.
+       * @param beta2_ Second moment decay.
+       * @param eps_   Epsilon for numerical stability.
+       * @param wd     Weight decay coefficient.
+       */
       AdamW(float lr_ = 3e-4f, float beta1_ = 0.9f, float beta2_ = 0.999f, float eps_ = 1e-8f,
             float wd = 0.0f)
           : lr(lr_), beta1(beta1_), beta2(beta2_), eps(eps_), weight_decay(wd), step_count(0)
       {
       }
 
+      /**
+       * @brief Register a parameter vector for optimization.
+       *
+       * @param p Parameter vector. Pointer stored; caller owns memory.
+       */
       void add_param(std::vector<float> &p)
       {
             params.push_back(p.data());
@@ -59,7 +84,11 @@ struct AdamW
             v.emplace_back(p.size(), 0.0f);
       }
 
-      // grads must be passed in the same order params were added
+      /**
+       * @brief Single optimization step.
+       *
+       * @param grads Per-parameter gradients. Same order as add_param() calls.
+       */
       void step(std::vector<std::vector<float>> &grads)
       {
             ++step_count;
@@ -82,8 +111,12 @@ struct AdamW
       }
 };
 
-// Full GPT language model: token and position embeddings,
-// N transformer blocks, final layer norm, and an output projection.
+/**
+ * @brief GPT language model.
+ *
+ * Token + position embeddings, N Transformer blocks, final LayerNorm,
+ * and output projection. Not thread-safe across forward/generate calls.
+ */
 struct GPTLanguageModel
 {
       std::mt19937 rng;
@@ -95,6 +128,18 @@ struct GPTLanguageModel
       LayerNorm ln_f;
       Linear lm_head;
 
+      /**
+       * @brief Construct and initialize all weights.
+       *
+       * @param vocab  Vocabulary size.
+       * @param embd   Embedding dimension.
+       * @param heads  Number of attention heads.
+       * @param layers Number of Transformer blocks.
+       * @param blk_sz Maximum sequence length (block size).
+       * @param seed   PRNG seed for weight init.
+       *
+       * @throws std::invalid_argument if embd % heads != 0.
+       */
       GPTLanguageModel(int vocab, int embd, int heads, int layers, int blk_sz, unsigned int seed)
           : vocab_size(vocab), n_embd(embd), n_head(heads), n_layer(layers), block_size(blk_sz),
             rng(seed), token_emb(vocab, embd, rng), pos_emb(blk_sz, embd, rng), ln_f(embd),
@@ -104,6 +149,10 @@ struct GPTLanguageModel
                   blocks.emplace_back(embd, heads, rng);
       }
 
+      /**
+       * @brief Total trainable parameters.
+       * @return Sum of all submodule parameter counts.
+       */
       int num_params() const
       {
             int n = token_emb.num_params() + pos_emb.num_params() + ln_f.num_params() +
@@ -113,12 +162,16 @@ struct GPTLanguageModel
             return n;
       }
 
-      // Run the full forward pass.
-      // idx     : flat list of B times T token indices
-      // B, T    : batch size and sequence length
-      // targets : flat list of B times T next-token indices (empty means inference only)
-      // training: enables dropout when true
-      // returns : logits of shape BT by vocab, and scalar loss (0 when no targets)
+      /**
+       * @brief Forward pass.
+       *
+       * @param idx      [B * T]. Flat token indices.
+       * @param B        Batch size.
+       * @param T        Sequence length.
+       * @param targets  [B * T]. Ground-truth next-token indices. Empty for inference.
+       * @param training Enables dropout when true.
+       * @return         Pair of {logits [B * T, vocab_size], loss}. Loss=0 when no targets.
+       */
       std::pair<Tensor, float> forward(const std::vector<int> &idx, int B, int T,
                                        const std::vector<int> &targets, bool training)
       {
@@ -150,10 +203,14 @@ struct GPTLanguageModel
             return {logits, loss};
       }
 
-      // Autoregressively sample max_new_tokens tokens from context.
-      // Repetition penalty from params is applied to raw logits before softmax
-      // so that tokens seen recently in the window are less likely to repeat.
-      // params defaults to config.h values when not provided.
+      /**
+       * @brief Autoregressive token generation with repetition penalty.
+       *
+       * @param context        Initial token sequence.
+       * @param max_new_tokens Number of tokens to generate.
+       * @param params         SamplerParams. Defaults to config.h values.
+       * @return               Extended token sequence (context + generated).
+       */
       std::vector<int> generate(std::vector<int> context, int max_new_tokens,
                                 const SamplerParams &params = SamplerParams())
       {
@@ -161,22 +218,18 @@ struct GPTLanguageModel
 
             for (int step = 0; step < max_new_tokens; ++step)
             {
-                  // crop context to model block size
                   int T = std::min((int)context.size(), block_size);
                   std::vector<int> ctx(context.end() - T, context.end());
 
                   Tensor logits = forward(ctx, 1, T, std::vector<int>(), false).first;
 
-                  // pull out the last time step logits only
                   int offset = (T - 1) * vocab_size;
                   std::vector<float> last(vocab_size);
                   for (int v = 0; v < vocab_size; ++v)
                         last[v] = logits.data[offset + v];
 
-                  // lower the score of tokens seen recently
                   apply_rep_penalty(last, context, params);
 
-                  // softmax to get a probability distribution
                   float maxv = *std::max_element(last.begin(), last.end());
                   float sumv = 0.0f;
                   for (auto &lv : last)
@@ -187,7 +240,6 @@ struct GPTLanguageModel
                   for (auto &lv : last)
                         lv /= sumv;
 
-                  // multinomial sample from the distribution
                   float r = udist(rng);
                   float cumsum = 0.0f;
                   int next_tok = vocab_size - 1;
@@ -205,7 +257,11 @@ struct GPTLanguageModel
             return context;
       }
 
-      // Write all weights to a binary file in layer order.
+      /**
+       * @brief Serialize all weights to binary file.
+       *
+       * @param path Output file path. Overwrites if exists.
+       */
       void save(const std::string &path) const
       {
             std::ofstream f(path, std::ios::binary);
@@ -220,9 +276,14 @@ struct GPTLanguageModel
                   b.save(f);
             ln_f.save(f);
             lm_head.save(f);
+            std::cout << "[SAVE]  Weights written to " << path << "\n";
       }
 
-      // Read all weights from a binary file in the same layer order as save.
+      /**
+       * @brief Deserialize all weights from binary file.
+       *
+       * @param path Input file path.
+       */
       void load(const std::string &path)
       {
             std::ifstream f(path, std::ios::binary);
