@@ -10,7 +10,7 @@ jobs:
   process:
     runs-on: ubuntu-latest
     environment:
-      name: lmgnu
+      name: status
 
     steps:
     - name: Init Sequence

@@ -5,12 +5,11 @@
  
 
 
-[![LMGNU](https://img.shields.io/badge/LMGNU-powered-56D1A0?logo=https%3A%2F%2Fraw.githubusercontent.com%2FLMGNU%2F.github%2Fmain%2Fprofile%2Fdragon_logo.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml) [![Release](https://img.shields.io/github/v/release/LMGNU/llm.cpp)](https://github.com/LMGNU/llm.cpp/releases) [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0) 
+[![LMGNU](https://img.shields.io/badge/LMGNU-powered-56D1A0?logo=https%3A%2F%2Fraw.githubusercontent.com%2FLMGNU%2F.github%2Fmain%2Fprofile%2Fdragon_logo.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml) [![Release](https://img.shields.io/github/v/release/LMGNU/llm.cpp)](https://github.com/LMGNU/llm.cpp/releases) [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://www.gnu.org/licenses/gpl-3.0) [![CI Approval](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml/badge.svg)](https://github.com/LMGNU/llm.cpp/actions/workflows/ci-approval.yml)
 </h1>
 
 
-llm.cpp implements language models in dependency-free C++, eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[llm.mm](llm.mm) and the [include/](include) directory also a ***token level [BPE]*** [tokenizer.h](include/tokenizer.h) implementation inside [include](include). With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
-The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU training on 31.4 million characters, demonstrating that character-level language modeling at this scale is highly tractable on commodity hardware without external dependencies. On a GPU (CUDA/bfloat16), a validation loss of 2.3918 is reached in under 83 minutes, achieving a peak throughput of 19.6k tokens per second.
+**llm.cpp** trains real language models in pure C++ - no PyTorch, no Python, no dependencies whatsoever. Just a single decoder-only GPT built from scratch: custom tensors, embeddings, multi-head causal self-attention, layernormalization, cross-entropy loss, and a hand-rolled backward pass with AdamW. Every gradient is derived by hand and written out explicitly  no autograd magic, no black boxes.The whole thing lives in just three places: [main.cpp](main.cpp), [llm.mm](llm.mm), and the [include/](include) directory. There's also a token-level BPE tokenizer tucked away in [include/tokenizer.h](include/tokenizer.h), built the same way from the round up. On the CPU, it trains to a validation loss of **1.6371 nats** in about **76 minutes** on **31.4 million characters**. That's character-level language modeling, running comfortably on ordinary hardware, with nothing but C++ and patience.On GPU with CUDA and bfloat16, it hits **2.3918 validation loss** in under **83 minutes**, peaking at **19.6k tokens per second**. Not bad for zero dependencies.
 
 ## Board
 | S.No. | time | val_bpb / Metric | scale | Date | Contributors |
@@ -25,8 +24,7 @@ The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU trai
 | 8 | 39.4 min | 1.3145 | 0.82M (CPU) | July 2026 | Eamon |
 | 9 | 76.2 min | 1.6371 | 0.82M (CPU) | Jan 2026 | Eamon |
 
-More broadly, the primary contribution of this work lies in its absolute transparency. Every gradient in the backward pass is explicitly written and readable, and every tensor operation is a standard C++ function. By exposing exactly what frameworks like PyTorch compute under the hood, this implementation provides a clear educational pathway. We believe that this fundamental understanding is the true foundation of genuine expertise in deep learning.
-The point of this repo is the C++ core. The PyTorch exist to make the model usable, but if you're here to ***train a GPT without a framework*** doing the work for you, [include/backward.h](include/backward.h) is where to start seeing optimization without torch.
+More broadly, The core computational engine of this repository is its custom C++ backend. While the PyTorch bindings are provided as a high-level API to make the model *usable* for inference and weight initialization, if your objective is to **execute an end-to-end GPT training loop independent of automated framework abstractions**, start with [include/backward.h](include/backward.h). This header explicitly defines the framework-agnostic backpropagation primitives and optimizer steps, computing the gradient flows and parameter updates directly without relying on PyTorch's internal `autograd` engine.
 
 ---
 
@@ -170,6 +168,97 @@ debugging tip: drop `-O2` for `-g` when compiling if you want to step through `i
 llm.exe [data_path] [--generate] [--chat] [--chat-tokens N]
 ```
 ---
+
+## How the Training Actually Works
+
+In `backward.h`, every gradient is computed . No autograd. No `.backward()` magic. Just C++ loops that do exactly what the math says.
+| File | What It Does |
+|------|-------------|
+| `backward.h` | The full backward pass, the optimizer, and all the gradient bookkeeping. This is where the model actually learns. |
+
+### The Gradient Accumulators
+
+Before we can update anything, we need somewhere to store the gradients. The `Grad*` structs are just containers - `GradLinear` for weight and bias gradients, `GradEmbedding` for lookup tables, `GradLayerNorm` for scale and shift, and so on. They nest together: `GradHead` holds three `GradLinear`s (for Q, K, V), `GradMHA` holds all the heads plus the output projection, `GradBlock` holds the attention + feedforward + two layer norms, and `Grads` holds the whole model. Each one has a `zero()` method to clear gradients between batches.
+
+### The Activation Cache
+
+To compute gradients, you need to remember what happened during the forward pass. The `Saved*` structs stash exactly that: pre-softmax attention scores, post-softmax weights, dropout masks, ReLU inputs, layer norm means and inverse standard deviations, and every intermediate tensor. `SavedForward` is the big one - it captures the entire forward pass so the backward pass can walk back through it in reverse.
+
+### The Backward Functions
+
+Each operation has its own backward function, and they chain together:
+
+- **`backward_cross_entropy`** - starts the whole thing. Takes the raw logits and the target tokens, computes softmax probabilities, subtracts 1 from the correct class, and divides by batch size. This is `dLoss/dLogits`.
+- **`backward_linear`** - given the upstream gradient, the input `x`, and the weight matrix `W`, computes gradients for `W` and `b` (if present) and passes the gradient back to `x`.
+- **`backward_layernorm`** - the full LayerNorm backward from the Ba et al. paper. Computes `dgamma`, `dbeta`, and the input gradient using the cached mean and inverse standard deviation.
+- **`backward_relu`** - dead simple: if the pre-activation was negative, the gradient is zero. Otherwise it passes through unchanged.
+- **`backward_dropout`** - scales the surviving gradients by `1/(1-p)` and zeros out the dropped ones.
+- **`backward_bmm`** - batched matrix multiply backward. Uses the standard chain rule: `dA = dOut @ B^T`, `dB = A^T @ dOut`.
+- **`backward_softmax3d`** - the trickiest one. For each row, computes `wei * (dwei - sum(wei * dwei))`. This is the Jacobian of softmax in closed form.
+- **`backward_cat_last`** - splits the concatenated multi-head gradient back into per-head tensors.
+
+### The Full Backward Pass
+
+The `backward()` function is the heart of it. It walks the model in reverse:
+
+1. **Loss gradient** -> `dlogits` from `backward_cross_entropy`
+2. **LM head** -> `backward_linear`, then `backward_layernorm`
+3. **For each block (in reverse)**:
+   - FFN branch: dropout ->linear -> ReLU -> linear >- layer norm
+   - Residual add
+   - MHA branch: dropout> linear -> split heads -> for each head: dropout backward -> softmax backward ->scale -> Q/K/V backward -> accumulate into input gradient
+   - Residual add
+   - Layer norm backward
+4. **Embeddings** -> gradients flow into both token and position embedding tables
+
+Every gradient is accumulated, not overwritten. This matters if you're doing gradient accumulation across multiple mini-batches.
+
+### The Optimizer
+
+`AdamWState` tracks first and second moment estimates (`m` and `v`) for every parameter. `build_optimizer()` registers all model parameters in order - embeddings, then each block's Q/K/V/projections, feedforward weights/biases, layer norm params, and finally the output head. `apply_grads()` does the actual update: bias-corrected moments, then `param -= lr * m_hat / (sqrt(v_hat) + eps)`. No weight decay in this version - it's vanilla Adam.
+```python
+loss.backward() # who???
+```
+## The Tokenizer: `tokenizer.h`
+
+This is the data pipeline. It handles two very different modes: training BPE from raw text, or streaming pre-tokenized shards from disk. Both paths end up at the same place - a batch of token IDs ready to feed into the model.
+
+### Two Modes, One Interface
+
+| Mode | When to Use | What It Does |
+|------|------------|-------------|
+| **TEXT** | Small to medium datasets that fit in RAM | Reads a `.txt` file, trains BPE, stores everything in `std::vector&lt;int&gt;` |
+| **SHARDED** | Large datasets (billions of tokens) | Memory-maps binary shards, streams tokens on demand, never loads the full dataset |
+
+The `load()` method picks the mode automatically. Pass it a file -> TEXT mode. Pass it a directory -> SHARDED mode.
+
+### TEXT Mode: Training BPE from Scratch
+
+BPE starts simple. Every unique character becomes its own token. Then it runs merge operations - find the most common pair of adjacent tokens, merge them into a new token, repeat. The `train_bpe()` function does exactly this, using a linked-list structure (`BPEIndex`) to track active tokens and their neighbors. A hash map (`pair_pos`) keeps track of where each pair occurs, so finding the most frequent one is fast.
+
+The merge table is cached to disk (`tokenizer.bin`) so you don't retrain every run. If the cached vocab matches your target size, it loads instantly. Otherwise it trains fresh and writes the cache.
+
+Encoding text works in two passes: `base_encode()` turns characters into initial token IDs, then `apply_merges()` walks the merge table in order, greedily combining pairs. Decoding is the reverse - just look up each ID in the vocab and concatenate.
+
+### SHARDED Mode: Streaming Billions of Tokens
+
+For datasets too large for RAM, we pre-tokenize into binary shards. Each shard is a flat stream of `uint16_t` token IDs with a small header. The `uint16_t` format caps vocabulary at 65,536 entries - which covers every standard BPE config (32k, 50k, 64k) at half the footprint of `int32`. That means shards page in twice as fast.
+
+The `MMapShard` struct handles the platform-specific memory mapping - `mmap` on POSIX, `MapViewOfFile` on Windows. It validates the shard header (magic number, version, token count) and exposes a pointer to the token data. Move-only semantics prevent accidental copies of file descriptors.
+
+`ShardedSplit` manages a collection of shards. It builds a prefix-sum index over token counts, so `locate(global_idx)` tells you which shard a token lives in, and `token_at(global_idx)` fetches it in O(1). No scanning, no seeking - just pointer arithmetic.
+
+### Batching
+
+`get_batch()` samples random starting positions and extracts `block_size` consecutive tokens for inputs, with the next token as the target. In TEXT mode this is a simple vector slice. In SHARDED mode it uses the prefix-sum index to find the right shard, then either reads directly from the mapped memory (if the sequence fits in one shard) or falls back to `token_at()` (if it spans a boundary). OpenMP parallelizes across the batch dimension - each thread gets its own RNG seed to keep things deterministic.
+
+### Writing Shards
+
+If you start with a TEXT dataset and want to convert it to SHARDED, `write_shards()` splits the in-memory train/val data into fixed-size chunks, writes each as a binary file with the standard header, and copies the vocab alongside. This is a one-time preprocessing step that pays off every time you train.
+
+### Why `uint16_t`?
+
+Most tokenizers use `int32` for IDs. That's fine, but wasteful when your vocab is under 65k. `uint16_t` cuts shard size in half, which means half the disk I/O, half the memory bandwidth, and faster cache utilization during batching. The tradeoff is a hard vocab ceiling - but in practice, 65k tokens is plenty for most language models.
 
 ## File structure
 
