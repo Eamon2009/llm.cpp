@@ -24,9 +24,7 @@
 | 8 | 39.4 min | 1.3145 | 0.82M (CPU) | July 2026 | Eamon |
 | 9 | 76.2 min | 1.6371 | 0.82M (CPU) | Jan 2026 | Eamon |
 
-More broadly, this work is really about **transparency**. Every gradient in the backward pass is written out by hand, plain as day. Every tensor operation is just a standard C++ function you can read and trace. No hidden abstractions, no framework magic — you see exactly what PyTorch normally does under the hood. We think that kind of fundamental understanding is what actually builds real expertise in deep learning, not just the ability to call `.backward()`.
-
-The heart of this repo is the C++ core. The PyTorch scripts are there to make the model *usable*, but if you're here to **train a GPT without a framework holding your hand**, start with [include/backward.h](include/backward.h). That's where you'll see optimization happen without `torch` doing the heavy lifting.
+More broadly, The core computational engine of this repository is its custom C++ backend. While the PyTorch bindings are provided as a high-level API to make the model *usable* for inference and weight initialization, if your objective is to **execute an end-to-end GPT training loop independent of automated framework abstractions**, start with [include/backward.h](include/backward.h). This header explicitly defines the framework-agnostic backpropagation primitives and optimizer steps, computing the gradient flows and parameter updates directly without relying on PyTorch's internal `autograd` engine.
 
 ---
 
@@ -174,9 +172,6 @@ llm.exe [data_path] [--generate] [--chat] [--chat-tokens N]
 ## How the Training Actually Works
 
 In `backward.h`, every gradient is computed . No autograd. No `.backward()` magic. Just C++ loops that do exactly what the math says.
-
-### Here
-
 | File | What It Does |
 |------|-------------|
 | `backward.h` | The full backward pass, the optimizer, and all the gradient bookkeeping. This is where the model actually learns. |
@@ -206,8 +201,8 @@ Each operation has its own backward function, and they chain together:
 
 The `backward()` function is the heart of it. It walks the model in reverse:
 
-1. **Loss gradient** → `dlogits` from `backward_cross_entropy`
-2. **LM head** → `backward_linear`, then `backward_layernorm`
+1. **Loss gradient** -> `dlogits` from `backward_cross_entropy`
+2. **LM head** -> `backward_linear`, then `backward_layernorm`
 3. **For each block (in reverse)**:
    - FFN branch: dropout ->linear -> ReLU -> linear >- layer norm
    - Residual add
@@ -224,6 +219,46 @@ Every gradient is accumulated, not overwritten. This matters if you're doing gra
 ```python
 loss.backward() # who???
 ```
+## The Tokenizer: `tokenizer.h`
+
+This is the data pipeline. It handles two very different modes: training BPE from raw text, or streaming pre-tokenized shards from disk. Both paths end up at the same place - a batch of token IDs ready to feed into the model.
+
+### Two Modes, One Interface
+
+| Mode | When to Use | What It Does |
+|------|------------|-------------|
+| **TEXT** | Small to medium datasets that fit in RAM | Reads a `.txt` file, trains BPE, stores everything in `std::vector&lt;int&gt;` |
+| **SHARDED** | Large datasets (billions of tokens) | Memory-maps binary shards, streams tokens on demand, never loads the full dataset |
+
+The `load()` method picks the mode automatically. Pass it a file -> TEXT mode. Pass it a directory -> SHARDED mode.
+
+### TEXT Mode: Training BPE from Scratch
+
+BPE starts simple. Every unique character becomes its own token. Then it runs merge operations - find the most common pair of adjacent tokens, merge them into a new token, repeat. The `train_bpe()` function does exactly this, using a linked-list structure (`BPEIndex`) to track active tokens and their neighbors. A hash map (`pair_pos`) keeps track of where each pair occurs, so finding the most frequent one is fast.
+
+The merge table is cached to disk (`tokenizer.bin`) so you don't retrain every run. If the cached vocab matches your target size, it loads instantly. Otherwise it trains fresh and writes the cache.
+
+Encoding text works in two passes: `base_encode()` turns characters into initial token IDs, then `apply_merges()` walks the merge table in order, greedily combining pairs. Decoding is the reverse - just look up each ID in the vocab and concatenate.
+
+### SHARDED Mode: Streaming Billions of Tokens
+
+For datasets too large for RAM, we pre-tokenize into binary shards. Each shard is a flat stream of `uint16_t` token IDs with a small header. The `uint16_t` format caps vocabulary at 65,536 entries - which covers every standard BPE config (32k, 50k, 64k) at half the footprint of `int32`. That means shards page in twice as fast.
+
+The `MMapShard` struct handles the platform-specific memory mapping - `mmap` on POSIX, `MapViewOfFile` on Windows. It validates the shard header (magic number, version, token count) and exposes a pointer to the token data. Move-only semantics prevent accidental copies of file descriptors.
+
+`ShardedSplit` manages a collection of shards. It builds a prefix-sum index over token counts, so `locate(global_idx)` tells you which shard a token lives in, and `token_at(global_idx)` fetches it in O(1). No scanning, no seeking - just pointer arithmetic.
+
+### Batching
+
+`get_batch()` samples random starting positions and extracts `block_size` consecutive tokens for inputs, with the next token as the target. In TEXT mode this is a simple vector slice. In SHARDED mode it uses the prefix-sum index to find the right shard, then either reads directly from the mapped memory (if the sequence fits in one shard) or falls back to `token_at()` (if it spans a boundary). OpenMP parallelizes across the batch dimension - each thread gets its own RNG seed to keep things deterministic.
+
+### Writing Shards
+
+If you start with a TEXT dataset and want to convert it to SHARDED, `write_shards()` splits the in-memory train/val data into fixed-size chunks, writes each as a binary file with the standard header, and copies the vocab alongside. This is a one-time preprocessing step that pays off every time you train.
+
+### Why `uint16_t`?
+
+Most tokenizers use `int32` for IDs. That's fine, but wasteful when your vocab is under 65k. `uint16_t` cuts shard size in half, which means half the disk I/O, half the memory bandwidth, and faster cache utilization during batching. The tradeoff is a hard vocab ceiling - but in practice, 65k tokens is plenty for most language models.
 
 ## File structure
 
