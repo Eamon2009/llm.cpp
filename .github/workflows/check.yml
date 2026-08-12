@@ -26,81 +26,99 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v7
       with:
-        fetch-depth: 0 
+        fetch-depth: 0
 
     - name: Get Changed Files
       id: get_changes
       run: |
-        # Detect if it's a PR or a direct push, and get the list of modified files
         if [ "${{ github.event_name }}" == "pull_request" ]; then
           FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD)
         else
           FILES=$(git diff-tree --no-commit-id --name-only -r ${{ github.sha }})
         fi
-        
-        # Save the list to a multi-line GitHub environment variable
-        echo "CHANGED_FILES<<EOF" >> $GITHUB_ENV
-        echo "$FILES" >> $GITHUB_ENV
-        echo "EOF" >> $GITHUB_ENV
-
+        # Use GitHub output instead of env for multi-line safety
+        {
+          echo "files<<EOF"
+          echo "$FILES"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Set up Python
       uses: actions/setup-python@v7
       with:
         python-version: '3.x'
+        cache: 'pip'
 
     - name: Install Python Linter
       run: |
         python -m pip install --upgrade pip
         pip install flake8
 
+    # FIXED: Use process substitution instead of pipe to avoid subshell
     - name: Lint Modified Python Files
       run: |
         errors=0
-        echo "$CHANGED_FILES" | while IFS= read -r file; do
-          # Only check if the file ends in .py AND it still exists (wasn't deleted)
+        while IFS= read -r file; do
           if [[ "$file" == *.py ]] && [ -f "$file" ]; then
             echo "Checking Python file: $file"
-            if ! flake8 "$file" --count --select=E9,F63,F7,F82 --show-source --statistics; then
+            # Expanded rules: syntax errors + undefined names + import issues
+            if ! flake8 "$file" --count --select=E9,F63,F7,F82,F401,F402,F403,F405,F821,F822,F823 --show-source --statistics; then
               errors=$((errors + 1))
+              echo "::error file=$file::Python lint failed for $file"
             fi
           fi
-        done
-        
-        if [ $errors -ne 0 ]; then 
-          echo "$errors Python file(s) failed."
-          exit 1
-        fi
-
-    - name: Check C/C++
-      run: |
-        echo "Checking modified C and C++ files for syntax errors..."
-        errors=0
-        
-        echo "$CHANGED_FILES" | while IFS= read -r file; do
-          if [ -f "$file" ]; then # Ensure file exists (skip deleted files)
-          
-            if [[ "$file" == *.c ]]; then
-              echo "Checking C file: $file"
-              if ! gcc -fsyntax-only -I. "$file"; then
-                echo "::error file=$file::Syntax error in $file"
-                errors=$((errors + 1))
-              fi
-              
-            elif [[ "$file" == *.cpp ]]; then
-              echo "Checking C++ file: $file"
-              if ! g++ -fsyntax-only -I. "$file"; then
-                echo "::error file=$file::Syntax error in $file"
-                errors=$((errors + 1))
-              fi
-              
-            fi
-          fi
-        done
+        done < <(echo "${{ steps.get_changes.outputs.files }}")
 
         if [ $errors -ne 0 ]; then
-          echo "$errors C/C++ file(s) failed syntax verification."
+          echo "::error::$errors Python file(s) failed linting."
           exit 1
         fi
-        
-        echo "All modified files passed syntax checks!"
+        echo "All Python files passed."
+
+    # FIXED: Auto-discover include paths + check headers + proper error propagation
+    - name: Check C/C++
+      run: |
+        echo "Discovering include paths..."
+        # Auto-find directories containing .h/.hpp files
+        INCLUDE_DIRS=$(find . -type f \( -name "*.h" -o -name "*.hpp" \) -exec dirname {} \; | sort -u | sed 's|^\.|\.|' | sed 's|^| -I|' | tr '\n' ' ')
+        echo "Found include paths: $INCLUDE_DIRS"
+
+        errors=0
+        while IFS= read -r file; do
+          [ -f "$file" ] || continue
+
+          case "$file" in
+            *.c)
+              echo "Checking C file: $file"
+              if ! gcc -fsyntax-only -Wall -Wextra $INCLUDE_DIRS -std=c11 "$file" 2>&1; then
+                echo "::error file=$file::Syntax error in C file $file"
+                errors=$((errors + 1))
+              fi
+              ;;
+            *.cpp|*.hpp)
+              echo "Checking C++ file: $file"
+              if ! g++ -fsyntax-only -Wall -Wextra $INCLUDE_DIRS -std=c++17 "$file" 2>&1; then
+                echo "::error file=$file::Syntax error in C++ file $file"
+                errors=$((errors + 1))
+              fi
+              ;;
+            *.h)
+              # Try as C first, fallback to C++ if it fails
+              echo "Checking header: $file"
+              if gcc -fsyntax-only -Wall -Wextra $INCLUDE_DIRS -std=c11 -x c "$file" 2>/dev/null; then
+                echo "  Valid C header"
+              elif g++ -fsyntax-only -Wall -Wextra $INCLUDE_DIRS -std=c++17 -x c++ "$file" 2>/dev/null; then
+                echo "  Valid C++ header"
+              else
+                echo "::error file=$file::Syntax error in header $file"
+                errors=$((errors + 1))
+              fi
+              ;;
+          esac
+        done < <(echo "${{ steps.get_changes.outputs.files }}")
+
+        if [ $errors -ne 0 ]; then
+          echo "::error::$errors C/C++ file(s) failed syntax verification."
+          exit 1
+        fi
+        echo "All C/C++ files passed."
