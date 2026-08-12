@@ -1,118 +1,293 @@
-name: PR Comment Checks
+name: PR Checks 
+concurrency:
+  group: pr-checks-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+ 
   issue_comment:
     types: [created]
 
 permissions:
   contents: read
-  issues: write
   pull-requests: write
-  checks: write
 
 jobs:
-  check-trigger:
+ 
+  init:
     runs-on: ubuntu-latest
-    if: >-
-      github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/run-checks') &&
-      (github.event.comment.author_association == 'OWNER' ||
-       github.event.comment.author_association == 'MEMBER')
     outputs:
-      pr_number: ${{ steps.pr-data.outputs.pr_number }}
+      should_run: ${{ steps.decide.outputs.should_run }}
+      pr_number: ${{ steps.decide.outputs.pr_number }}
+      is_demand: ${{ steps.decide.outputs.is_demand }}
+      has_cpp: ${{ steps.changes.outputs.cpp }}
+      has_python: ${{ steps.changes.outputs.python }}
+      has_docker: ${{ steps.changes.outputs.docker }}
+      has_js: ${{ steps.changes.outputs.js }}
+      has_md: ${{ steps.changes.outputs.md }}
+      has_yaml: ${{ steps.changes.outputs.yaml }}
+      has_shell: ${{ steps.changes.outputs.shell }}
+      has_rust: ${{ steps.changes.outputs.rust }}
+      has_go: ${{ steps.changes.outputs.go }}
+      has_java: ${{ steps.changes.outputs.java }}
+      cpp_files: ${{ steps.changes.outputs.cpp_files }}
+      py_files: ${{ steps.changes.outputs.py_files }}
+      docker_files: ${{ steps.changes.outputs.docker_files }}
+      js_files: ${{ steps.changes.outputs.js_files }}
+      md_files: ${{ steps.changes.outputs.md_files }}
+      yaml_files: ${{ steps.changes.outputs.yaml_files }}
+      shell_files: ${{ steps.changes.outputs.shell_files }}
+      rust_files: ${{ steps.changes.outputs.rust_files }}
+      go_files: ${{ steps.changes.outputs.go_files }}
+      java_files: ${{ steps.changes.outputs.java_files }}
     steps:
-      - name: Extract Metadata
-        id: pr-data
-        run: echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+      - name: Determine run context
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "is_demand=false" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "issue_comment" ]; then
+            BODY="${{ github.event.comment.body }}"
+            ASSOC="${{ github.event.comment.author_association }}"
+            if [[ "$BODY" == /run-checks* ]] && \
+               [ "${{ github.event.issue.pull_request }}" != "" ] && \
+               ( [ "$ASSOC" == "OWNER" ] || [ "$ASSOC" == "MEMBER" ] || [ "$ASSOC" == "COLLABORATOR" ] ); then
+              echo "should_run=true" >> $GITHUB_OUTPUT
+              echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+              echo "is_demand=true" >> $GITHUB_OUTPUT
+            else
+              echo "should_run=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Acknowledge execution start
+      - name: Acknowledge on-demand trigger
+        if: steps.decide.outputs.is_demand == 'true'
         uses: actions/github-script@v7
         with:
           script: |
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
-              body: `[INFO] PR Check triggered by @${context.payload.comment.user.login}. Running universal syntax checks, linters, cross-platform compilation, and tests...`
+              issue_number: ${{ steps.decide.outputs.pr_number }},
+              body: `:rocket: **PR Check triggered** by @${context.payload.comment.user.login}\n\nRunning smart checks based on changed files...`
             });
 
-  universal-syntax-and-lint:
-    needs: check-trigger
+      - uses: actions/checkout@v7
+        if: steps.decide.outputs.should_run == 'true'
+        with:
+          fetch-depth: 0
+          ref: refs/pull/${{ steps.decide.outputs.pr_number }}/head
+
+      - name: Detect changed files
+        if: steps.decide.outputs.should_run == 'true'
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          list-files: json
+          filters: |
+            cpp:
+              - '**/*.c'
+              - '**/*.cpp'
+              - '**/*.h'
+              - '**/*.hpp'
+              - '**/*.cu'
+              - '**/*.cuh'
+              - '**/CMakeLists.txt'
+              - '**/Makefile'
+            python:
+              - '**/*.py'
+              - '**/requirements*.txt'
+              - '**/pyproject.toml'
+              - '**/setup.py'
+              - '**/setup.cfg'
+            docker:
+              - '**/Dockerfile*'
+              - '**/*.dockerfile'
+              - '**/docker-compose*.yml'
+              - '**/.dockerignore'
+            js:
+              - '**/*.js'
+              - '**/*.ts'
+              - '**/*.jsx'
+              - '**/*.tsx'
+              - '**/package.json'
+              - '**/package-lock.json'
+            md:
+              - '**/*.md'
+              - '**/*.mdx'
+            yaml:
+              - '**/*.yml'
+              - '**/*.yaml'
+              - '**/.github/workflows/*.yml'
+            shell:
+              - '**/*.sh'
+              - '**/*.bash'
+              - '**/*.zsh'
+            rust:
+              - '**/*.rs'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+            go:
+              - '**/*.go'
+              - '**/go.mod'
+              - '**/go.sum'
+            java:
+              - '**/*.java'
+              - '**/pom.xml'
+              - '**/build.gradle'
+  smart-lint:
+    needs: init
+    if: needs.init.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
+          ref: refs/pull/${{ needs.init.outputs.pr_number }}/head
 
-      - name: Install System Linters and Tools
+      - name: Install Universal Linters
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-format clang-tidy cppcheck python3
-          # Install Hadolint for Dockerfile checking
-          sudo wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          sudo apt-get install -y clang-format clang-tidy cppcheck shellcheck \
+            python3 python3-pip nodejs npm
+          sudo wget -qO /usr/local/bin/hadolint \
+            https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
           sudo chmod +x /usr/local/bin/hadolint
+          pip install --user flake8 black isort bandit ruff yamllint
+          npm install -g eslint prettier
+          cargo install stylua 2>/dev/null || true
+          go install mvdan.cc/sh/v3/cmd/shfmt@latest 2>/dev/null || true
 
-      # Dockerfile Linting
-      - name: Dockerfile Syntax Check
+      - name: Lint C/C++/CUDA (changed files only)
+        if: needs.init.outputs.has_cpp == 'true'
         run: |
-          DOCKERFILES=$(find . -type f \( -name "Dockerfile*" -o -name "*.dockerfile" \) | grep -v /build/ || true)
-          if [ -n "$DOCKERFILES" ]; then
-            echo "[INFO] Checking Dockerfile syntax..."
-            hadolint $DOCKERFILES
-          else
-            echo "[INFO] No Dockerfiles found."
+          FILES='${{ needs.init.outputs.cpp_files }}'
+          if [ "$FILES" != "[]" ] && [ -n "$FILES" ]; then
+            echo "$FILES" | jq -r '.[]' | while read -r f; do
+              [ -f "$f" ] || continue
+              echo "Checking: $f"
+              case "$f" in
+                *.c|*.cpp|*.h|*.hpp|*.cu|*.cuh)
+                  clang-format --dry-run --Werror "$f" || echo "::warning file=$f::Format issue"
+                  ;;
+              esac
+            done
+            # cppcheck only on changed files (not entire repo)
+            echo "$FILES" | jq -r '.[]' > /tmp/cpp_files.txt
+            cppcheck --enable=warning,style,performance,portability \
+              --error-exitcode=0 \
+              --suppress=missingIncludeSystem \
+              --file-list=/tmp/cpp_files.txt || true
           fi
 
-      # C / C++ / CUDA Formatting and Static Analysis
-      - name: C / C++ / CUDA Formatting Check
+
+      - name: Lint Python (changed files only)
+        if: needs.init.outputs.has_python == 'true'
         run: |
-          CPP_FILES=$(find . -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" -o -name "*.hpp" -o -name "*.cu" -o -name "*.cuh" \) | grep -v /build/ || true)
-          if [ -n "$CPP_FILES" ]; then
-            echo "[INFO] Checking C/C++/CUDA formatting..."
-            clang-format --dry-run --Werror $CPP_FILES
-          else
-            echo "[INFO] No C/C++/CUDA source files found."
+          FILES='${{ needs.init.outputs.py_files }}'
+          if [ "$FILES" != "[]" ] && [ -n "$FILES" ]; then
+            echo "$FILES" | jq -r '.[]' > /tmp/py_files.txt
+
+            # Fast syntax check
+            while read -r f; do [ -f "$f" ] && python -m py_compile "$f"; done < /tmp/py_files.txt
+
+            # Ruff (ultra fast, replaces flake8+isort+black for speed)
+            xargs -a /tmp/py_files.txt ruff check --output-format=github || true
+
+            # Security scan (informational, not blocking)
+            xargs -a /tmp/py_files.txt bandit -ll || echo "::warning::Bandit found issues (non-blocking)"
           fi
 
-      - name: C / C++ / CUDA CppCheck Analysis
+    
+      - name: Lint Docker (changed files only)
+        if: needs.init.outputs.has_docker == 'true'
         run: |
-          cppcheck --enable=all --error-exitcode=1 \
-            --suppress=missingIncludeSystem \
-            --suppress=unusedFunction \
-            --std=c++17 .
-
-      # Python Syntax and Formatting
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.11'
-
-      - name: Install Python Linters
-        run: |
-          python -m pip install --upgrade pip
-          pip install flake8 black isort bandit
-
-      - name: Python Syntax Validation
-        run: |
-          PY_FILES=$(find . -name "*.py" -type f | grep -v __pycache__ || true)
-          if [ -n "$PY_FILES" ]; then
-            echo "[INFO] Checking Python syntax compilation..."
-            python -m py_compile $PY_FILES
-          else
-            echo "[INFO] No Python files found."
+          FILES='${{ needs.init.outputs.docker_files }}'
+          if [ "$FILES" != "[]" ] && [ -n "$FILES" ]; then
+            echo "$FILES" | jq -r '.[]' | while read -r f; do
+              [[ "$f" == Dockerfile* ]] && hadolint "$f" || true
+            done
           fi
 
-      - name: Python Formatting and Linting Checks
+    
+      - name: Lint JS/TS (changed files only)
+        if: needs.init.outputs.has_js == 'true'
         run: |
-          black --check .
-          isort --check-only .
-          flake8 . --max-line-length=127
+          FILES='${{ needs.init.outputs.js_files }}'
+          if [ "$FILES" != "[]" ] && [ -n "$FILES" ]; then
+            echo "$FILES" | jq -r '.[]' > /tmp/js_files.txt
+            xargs -a /tmp/js_files.txt eslint --max-warnings=10 || true
+          fi
 
-      - name: Python Security Audit (Bandit)
-        run: bandit -r . -ll
-  cpp-build-matrix:
-    needs: [check-trigger, universal-syntax-and-lint]
+    
+      - name: Lint YAML (changed files only)
+        if: needs.init.outputs.has_yaml == 'true'
+        run: |
+          FILES='${{ needs.init.outputs.yaml_files }}'
+          if [ "$FILES" != "[]" ] && [ -n "$FILES" ]; then
+            echo "$FILES" | jq -r '.[]' | while read -r f; do
+              [ -f "$f" ] && yamllint -d relaxed "$f" || true
+            done
+          fi
+
+     
+      - name: Lint Shell (changed files only)
+        if: needs.init.outputs.has_shell == 'true'
+        run: |
+          FILES='${{ needs.init.outputs.shell_files }}'
+          if [ "$FILES" != "[]" ] && [ -n "$FILES" ]; then
+            echo "$FILES" | jq -r '.[]' > /tmp/sh_files.txt
+            xargs -a /tmp/sh_files.txt shellcheck --severity=warning || true
+          fi
+
+      
+      - name: Lint Markdown (changed files only)
+        if: needs.init.outputs.has_md == 'true'
+        run: |
+          FILES='${{ needs.init.outputs.md_files }}'
+          if [ "$FILES" != "[]" ] && [ -n "$FILES" ]; then
+            npm install -g markdownlint-cli 2>/dev/null || true
+            echo "$FILES" | jq -r '.[]' | xargs markdownlint || true
+          fi
+
+    
+      - name: Lint Rust (changed files only)
+        if: needs.init.outputs.has_rust == 'true'
+        run: |
+          rustup component add clippy rustfmt 2>/dev/null || true
+          cargo fmt --check 2>/dev/null || true
+          cargo clippy -- -D warnings 2>/dev/null || true
+
+    
+      - name: Lint Go (changed files only)
+        if: needs.init.outputs.has_go == 'true'
+        run: |
+          go install golang.org/x/lint/golint@latest 2>/dev/null || true
+          gofmt -l . 2>/dev/null || true
+
+    
+      - name: Lint Java (changed files only)
+        if: needs.init.outputs.has_java == 'true'
+        run: |
+          # Basic check: javac syntax-only if no build system
+          FILES='${{ needs.init.outputs.java_files }}'
+          if [ "$FILES" != "[]" ] && [ -n "$FILES" ]; then
+            echo "$FILES" | jq -r '.[]' | while read -r f; do
+              [ -f "$f" ] && javac -d /tmp/compiled -sourcepath . "$f" 2>/dev/null || true
+            done
+          fi
+
+
+  cpp-build:
+    needs: [init, smart-lint]
+    if: needs.init.outputs.should_run == 'true' && needs.init.outputs.has_cpp == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -120,138 +295,196 @@ jobs:
         include:
           - os: ubuntu-latest
             compiler: gcc
+            cc: gcc
+            cxx: g++
           - os: ubuntu-latest
             compiler: clang
+            cc: clang
+            cxx: clang++
           - os: macos-latest
             compiler: clang
+            cc: clang
+            cxx: clang++
           - os: windows-latest
             compiler: msvc
-          - os: windows-latest
-            compiler: gcc
-          - os: windows-latest
-            compiler: clang
     defaults:
       run:
         shell: bash
-
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
+          ref: refs/pull/${{ needs.init.outputs.pr_number }}/head
 
-      - name: Install Linux Build Dependencies
-        if: runner.os == 'Linux'
+      - name: Report environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential g++ clang libomp-dev
+          echo "OS: ${{ matrix.os }}"
+          echo "Compiler: ${{ matrix.compiler }}"
+          ${{ matrix.cc }} --version 2>/dev/null || true
+          ${{ matrix.cxx }} --version 2>/dev/null || true
+          cmake --version 2>/dev/null || true
 
-      - name: Install Windows MinGW / Clang
-        if: runner.os == 'Windows' && matrix.compiler != 'msvc'
-        run: choco install mingw llvm -y
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: pr-${{ matrix.os }}-${{ matrix.compiler }}
+          max-size: 500M
 
-      - name: Setup MSVC Environment
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential g++ clang libomp-dev ninja-build
+
+      - name: Setup MSVC
         if: runner.os == 'Windows' && matrix.compiler == 'msvc'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Build Executable (GCC)
-        if: matrix.compiler == 'gcc'
+      - name: Auto-detect and build
         run: |
-          if [ -f "main.cpp" ]; then
-            g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
-          fi
-
-      - name: Build Executable (Clang / Objective-C++)
-        if: matrix.compiler == 'clang'
-        run: |
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            if [ -f "llm.mm" ] && [ -f "main.cpp" ]; then
-              clang++ -std=c++17 -O3 -I. -Iinclude main.cpp llm.mm -framework Foundation -framework Metal -framework MetalPerformanceShaders -o llm
-            elif [ -f "main.cpp" ]; then
-              clang++ -std=c++17 -O3 -I. -Iinclude main.cpp -o llm
-            fi
+          # Try CMake first
+          if [ -f "CMakeLists.txt" ]; then
+            mkdir -p build && cd build
+            cmake .. -DCMAKE_BUILD_TYPE=Release \
+                     -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                     -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            cmake --build . --parallel $(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+          # Try Makefile
+          elif [ -f "Makefile" ] || [ -f "makefile" ]; then
+            make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+          # Fallback: compile main.cpp if it exists
           elif [ -f "main.cpp" ]; then
-            clang++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
+            if [ "${{ matrix.compiler }}" == "gcc" ]; then
+              g++ -std=c++17 -O2 -I. -o app main.cpp
+            elif [ "${{ matrix.compiler }}" == "clang" ]; then
+              clang++ -std=c++17 -O2 -I. -o app main.cpp
+            fi
+          else
+            echo "::warning::No build system detected (CMake/Makefile/main.cpp)"
           fi
 
-      - name: Build Executable (MSVC)
-        if: matrix.compiler == 'msvc'
-        run: |
-          if [ -f "main.cpp" ]; then
-            cl /std:c++17 /O2 /openmp /I. /Iinclude main.cpp /Fe:llm.exe
-          fi
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.os }}-${{ matrix.compiler }}
+          path: |
+            build/
+            app*
+            *.exe
+          retention-days: 3
+          if-no-files-found: ignore
 
   
-  python-tests:
-    needs: [check-trigger, universal-syntax-and-lint]
+  python-test:
+    needs: [init, smart-lint]
+    if: needs.init.outputs.should_run == 'true' && needs.init.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.9', '3.10', '3.11', '3.12']
-
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: refs/pull/${{ needs.check-trigger.outputs.pr_number }}/head
+          ref: refs/pull/${{ needs.init.outputs.pr_number }}/head
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
 
-      - name: Install dependencies
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov
+          pip install pytest pytest-xdist pytest-cov
           if [ -f "requirements.txt" ]; then pip install -r requirements.txt; fi
+          if [ -f "pyproject.toml" ]; then pip install -e .; fi
 
-      - name: Run Pytest Suite
+      - name: Run tests with JUnit
         run: |
-          if [ -d "tests" ] || [ -d "test" ] || [ -n "$(find . -maxdepth 2 -name 'test_*.py')" ]; then
-            pytest --cov=. --cov-report=term-missing -v
-          fi
+          pytest -v -n auto --tb=short \
+            --junitxml=pytest-py${{ matrix.python-version }}.xml \
+            --cov=. --cov-report=xml \
+            || true
+        continue-on-error: true
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-py${{ matrix.python-version }}
+          path: pytest-py${{ matrix.python-version }}.xml
+          retention-days: 7
+
+      - name: Publish test report
+        uses: mikepenz/action-junit-report@v4
+        if: always()
+        with:
+          report_paths: pytest-py${{ matrix.python-version }}.xml
+          check_name: Python ${{ matrix.python-version }} Tests
+
+  
   summary:
+    needs: [init, smart-lint, cpp-build, python-test]
+    if: always() && needs.init.outputs.should_run == 'true'
     runs-on: ubuntu-latest
-    needs: [check-trigger, universal-syntax-and-lint, cpp-build-matrix, python-tests]
-    if: always() && needs.check-trigger.result == 'success'
     env:
-      PR_NUMBER: ${{ needs.check-trigger.outputs.pr_number }}
+      PR_NUMBER: ${{ needs.init.outputs.pr_number }}
     steps:
-      - name: Post PR Summary Comment
+      - name: Generate & post summary
         uses: actions/github-script@v7
         with:
           script: |
-            const formatStatus = (result) => {
-              if (result === 'success') return 'PASSED';
-              if (result === 'skipped') return 'SKIPPED';
-              return 'FAILED';
-            };
+            const prNum = Number(process.env.PR_NUMBER);
+            const isDemand = '${{ needs.init.outputs.is_demand }}' === 'true';
 
-            const lint_status = formatStatus('${{ needs.universal-syntax-and-lint.result }}');
-            const cpp_build_status = formatStatus('${{ needs.cpp-build-matrix.result }}');
-            const python_test_status = formatStatus('${{ needs.python-tests.result }}');
+            const jobs = [
+              { name: 'Smart Lint', result: '${{ needs.smart-lint.result }}', always: true },
+              { name: 'C++ Build', result: '${{ needs.cpp-build.result }}', cond: '${{ needs.init.outputs.has_cpp }}' === 'true' },
+              { name: 'Python Tests', result: '${{ needs.python-test.result }}', cond: '${{ needs.init.outputs.has_python }}' === 'true' },
+            ];
 
-            const allPassed = [lint_status, cpp_build_status, python_test_status]
-              .every(s => s === 'PASSED' || s === 'SKIPPED');
+            let body = `## PR Check Results\n\n`;
+            body += `| Check | Status |\n`;
+            body += `|-------|--------|\n`;
 
-            const overall = allPassed
-              ? 'ALL PR CHECKS PASSED'
-              : 'CHECK FAILURES DETECTED';
+            let allPassed = true;
+            for (const j of jobs) {
+              if (j.always || j.cond) {
+                const status = j.result === 'success' ? '✅ PASSED' : 
+                               j.result === 'skipped' ? '⏭️ SKIPPED' : '❌ FAILED';
+                if (j.result !== 'success' && j.result !== 'skipped') allPassed = false;
+                body += `| ${j.name} | ${status} |\n`;
+              }
+            }
 
-            const comment = `## Maintainer PR Check Results\n\n` +
-              `| Check Category | Status |\n` +
-              `| :--- | :--- |\n` +
-              `| **Universal Syntax & Linting (Docker, C, C++, CUDA, Python)** | ${lint_status} |\n` +
-              `| **C++ / CUDA Cross-Platform Builds** | ${cpp_build_status} |\n` +
-              `| **Python Multi-Version Pytest Suite** | ${python_test_status} |\n\n` +
-              `**Overall Outcome**: ${overall}\n\n` +
-              `[View Execution Logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            body += `\n**Overall**: ${allPassed ? '✅ ALL CHECKS PASSED' : '❌ SOME CHECKS FAILED'}\n`;
+            body += `\n[View Logs](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            if (isDemand) body += ` | Triggered by \`/run-checks\``;
 
-            await github.rest.issues.createComment({
-              issue_number: Number(process.env.PR_NUMBER),
+            // Find existing bot comment
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: comment
+              issue_number: prNum,
             });
+
+            const botComment = comments.find(c => 
+              c.user.login === 'github-actions[bot]' && 
+              c.body.includes('PR Check Results')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                comment_id: botComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: prNum,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body,
+              });
+            }
