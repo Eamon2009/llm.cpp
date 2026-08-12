@@ -173,6 +173,52 @@ GPU (LibTorch, bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-d
 
 ```
 
+|-─ .ci/                        # CI/CD pipelines and Docker configurations
+├── .github/                    # GitHub Actions workflows and issue templates
+├── assets/                     # Project images, banners, and hardware diagrams
+├── benches/
+│   └── bench.cpp               # C++ benchmarking script for performance testing
+├── config/
+│   └── config.h                # Global configuration parameters
+├── data/
+│   ├── dataset.py              # Data loading and preprocessing pipeline
+├── docs/                       # Additional documentation and generated reports
+├── engine/                     # Core backend implementation
+│   └── llm.cpp/                # Low-level C++/CUDA/Metal engine
+│       ├── CMakeLists.txt      # Engine-specific build configuration
+│       ├── llm.cu              # CUDA implementation for Nvidia GPUs
+│       ├── make                # Engine Makefile compilation script
+│       ├── train.mm            # Objective-C++ Metal script for Apple Silicon training
+│       ├── config/
+│       │   └── config.h        # Engine-specific configuration header
+│       └── include/            # Neural network mathematical headers
+│           ├── attention.h     # Self-attention module definitions
+│           ├── cuda_kernels.cuh # Custom CUDA kernel definitions
+│           ├── layer.cuh       # Layer abstractions for GPU
+│           ├── tensor.cuh      # Core tensor math operations
+│           └── ...             # (Other low-level neural net headers)
+├── include/                    # High-level C++ API headers
+│   ├── attention.h             # High-level attention interfaces
+│   ├── gpt.h                   # GPT model architecture definitions
+│   ├── llm-cpp.hpp             # Main library interface for external use
+│   ├── tokenizer.h             # Text tokenization logic
+│   ├── torch_bridge.h
+     └── ...                   # Interoperability layer for PyTorch tensors
+├── scripts/
+│   └── build.sh                # Automation script for building the project
+├── train_test/                 # Experimental and testing scripts
+│   ├── model.py                # Python model architecture definitions
+│   ├── test.c                  # C-based functional testing
+│   └── train2.mm               # Experimental Metal training iterations
+├── .clang-format               # Code style rules for C/C++ files
+├── .clang-tidy                 # Linter configuration for C/C++ static analysis
+├── benchmark.cpp               # Entry point for running system benchmarks
+├── CMakeLists.txt              # Root CMake build configuration
+├── llm.mm                      # Apple Silicon (Metal) main inference entry point
+├── main.cpp                    # Main application C++ entry point
+├── README.md                   # Main project documentation
+├── requirements.txt            # Python dependencies for the project
+└── shards.cpp                  # C++ implementation for handling data shards
 ```
 
 ---
