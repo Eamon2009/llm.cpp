@@ -4,130 +4,90 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, e.g. v1.2.3 or b1234"
+        description: "Release version, for example v1.2.3 or 1.2.3"
         required: true
-      prerelease:
-        description: "Mark as prerelease"
-        type: boolean
-        default: false
-      skip_build:
-        description: "Skip builds, just publish existing artifacts"
-        type: boolean
-        default: false
-
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 env:
   ARTIFACT_ROOT: release-assets
-  REPO_NAME: llm.cpp
-
-permissions:
-  contents: write
-  actions: read
 
 jobs:
   release-metadata:
-    name: Release Metadata
+    name: Release metadata
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.tag.outputs.tag_name }}
-      version: ${{ steps.tag.outputs.version }}
-      is_prerelease: ${{ steps.tag.outputs.is_prerelease }}
-      changelog: ${{ steps.changelog.outputs.changelog }}
-      short_sha: ${{ steps.tag.outputs.short_sha }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
       - id: tag
         shell: bash
         run: |
           set -euo pipefail
-          raw="${{ inputs.version }}"
-          # Support both v1.2.3 and b1234 styles
-          if [[ "$raw" == v* ]]; then
-            tag_name="$raw"
-            version="${raw#v}"
-          elif [[ "$raw" == b* ]]; then
-            tag_name="$raw"
-            version="$raw"
+          raw_tag="${{ inputs.version }}"
+          if [[ "${raw_tag}" == v* ]]; then
+            tag_name="${raw_tag}"
           else
-            tag_name="v$raw"
-            version="$raw"
+            tag_name="v${raw_tag}"
           fi
-          echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "is_prerelease=${{ inputs.prerelease }}" >> "$GITHUB_OUTPUT"
-          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${tag_name}" >> "$GITHUB_OUTPUT"
 
-      - id: changelog
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAG="${{ steps.tag.outputs.tag_name }}"
-          # Get commits since last tag (or last 20 if no previous tag)
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          if [ -n "$LAST_TAG" ]; then
-            RANGE="${LAST_TAG}..HEAD"
-          else
-            RANGE="HEAD~20..HEAD"
-          fi
-
-          # Format like llama.cpp: bullet points with PR refs
-          CHANGELOG=$(git log "$RANGE" --pretty=format:'- %s' --reverse | \
-            sed 's/\(#[0-9]*\)/([\1](https:\/\/github.com\/${{ github.repository }}\/pull\/\1))/g' | \
-            sed 's/(`\([a-f0-9]*\)`)/(\`\1\`)/g')
-
-          # Use heredoc for multi-line output
-          {
-            echo "changelog<<EOF"
-            echo "$CHANGELOG"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
   macos-arm64-cpu:
     name: macOS Apple Silicon (arm64) CPU
     needs: release-metadata
-    if: ${{ !inputs.skip_build }}
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v7
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - name: Build
+        shell: bash
         run: |
           set -euo pipefail
           clang++ -std=c++17 -O3 -DNDEBUG -arch arm64 \
-            -I. -Iinclude -o llm main.cpp
+            -I. -Iinclude \
+            -o llm main.cpp
           file llm
+
       - name: Smoke test
+        shell: bash
         run: |
           set +e
-          ./llm --chat >/dev/null 2>&1 || true
+          ./llm --chat >/dev/null 2>&1
           exit 0
-      - name: Pack
+
+      - name: Pack artifacts
+        shell: bash
         run: |
           set -euo pipefail
-          pkg="${REPO_NAME}-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu"
-          mkdir -p "${ARTIFACT_ROOT}/${pkg}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${pkg}/"
-          tar -czf "${pkg}.tar.gz" -C "${ARTIFACT_ROOT}" "${pkg}"
-      - uses: actions/upload-artifact@v4
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: bin-macos-arm64-cpu
-          path: "${{ env.REPO_NAME }}-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu.tar.gz"
+          name: llm.cpp-bin-macos-arm64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu.tar.gz
           if-no-files-found: error
           retention-days: 30
 
   macos-arm64-metal:
     name: macOS Apple Silicon (arm64) Metal
     needs: release-metadata
-    if: ${{ !inputs.skip_build }}
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v7
-      - name: Build with Metal
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        shell: bash
         run: |
           set -euo pipefail
           if [ -f "llm.mm" ]; then
@@ -142,219 +102,478 @@ jobs:
               -DENABLE_METAL -I. -Iinclude -o llm main.cpp
           fi
           file llm
-      - name: Pack
+
+      - name: Pack artifacts
+        shell: bash
         run: |
           set -euo pipefail
-          pkg="${REPO_NAME}-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-metal"
-          mkdir -p "${ARTIFACT_ROOT}/${pkg}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${pkg}/"
-          tar -czf "${pkg}.tar.gz" -C "${ARTIFACT_ROOT}" "${pkg}"
-      - uses: actions/upload-artifact@v4
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-metal"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: bin-macos-arm64-metal
-          path: "${{ env.REPO_NAME }}-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-metal.tar.gz"
+          name: llm.cpp-bin-macos-arm64-metal
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-metal.tar.gz
           if-no-files-found: warn
           retention-days: 30
+
   macos-x64-cpu:
     name: macOS Intel (x64)
     needs: release-metadata
-    if: ${{ !inputs.skip_build }}
     runs-on: macos-13
     steps:
-      - uses: actions/checkout@v7
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - name: Build
+        shell: bash
         run: |
           set -euo pipefail
           clang++ -std=c++17 -O3 -DNDEBUG -arch x86_64 \
             -I. -Iinclude -o llm main.cpp
           file llm
-      - name: Pack
+
+      - name: Pack artifacts
+        shell: bash
         run: |
           set -euo pipefail
-          pkg="${REPO_NAME}-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu"
-          mkdir -p "${ARTIFACT_ROOT}/${pkg}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${pkg}/"
-          tar -czf "${pkg}.tar.gz" -C "${ARTIFACT_ROOT}" "${pkg}"
-      - uses: actions/upload-artifact@v4
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: bin-macos-x64-cpu
-          path: "${{ env.REPO_NAME }}-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu.tar.gz"
+          name: llm.cpp-bin-macos-x64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu.tar.gz
           if-no-files-found: error
           retention-days: 30
+
   ios-xcframework:
     name: iOS XCFramework
     needs: release-metadata
-    if: ${{ !inputs.skip_build }}
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v7
-      - name: Build iOS arm64
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build for iOS (arm64)
+        shell: bash
         run: |
           set -euo pipefail
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          clang++ -std=c++17 -O3 -DNDEBUG -arch arm64 -isysroot "$SDK" \
-            -I. -Iinclude -c main.cpp -o llm-ios-arm64.o
+          clang++ -std=c++17 -O3 -DNDEBUG \
+            -arch arm64 -isysroot "$SDK" \
+            -I. -Iinclude \
+            -c main.cpp -o llm-ios-arm64.o
           ar rcs libllm-ios-arm64.a llm-ios-arm64.o
-      - name: Build iOS Simulator
+
+      - name: Build for iOS Simulator (x86_64)
+        shell: bash
         run: |
           set -euo pipefail
           SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
-          clang++ -std=c++17 -O3 -DNDEBUG -arch x86_64 -isysroot "$SDK" \
-            -I. -Iinclude -c main.cpp -o llm-ios-sim-x86_64.o
+          clang++ -std=c++17 -O3 -DNDEBUG \
+            -arch x86_64 -isysroot "$SDK" \
+            -I. -Iinclude \
+            -c main.cpp -o llm-ios-sim-x86_64.o
           ar rcs libllm-ios-sim-x86_64.a llm-ios-sim-x86_64.o
+
       - name: Create XCFramework
+        shell: bash
         run: |
           set -euo pipefail
           xcodebuild -create-xcframework \
             -library libllm-ios-arm64.a \
             -library libllm-ios-sim-x86_64.a \
             -output LLM.xcframework
-      - name: Pack
+
+      - name: Pack artifacts
+        shell: bash
         run: |
           set -euo pipefail
-          pkg="${REPO_NAME}-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework"
-          mkdir -p "${ARTIFACT_ROOT}/${pkg}"
-          cp -r LLM.xcframework README.md LICENSE "${ARTIFACT_ROOT}/${pkg}/"
-          tar -czf "${pkg}.tar.gz" -C "${ARTIFACT_ROOT}" "${pkg}"
-      - uses: actions/upload-artifact@v4
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp -r LLM.xcframework README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: ios-xcframework
-          path: "${{ env.REPO_NAME }}-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz"
+          name: llm.cpp-ios-xcframework
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz
           if-no-files-found: error
           retention-days: 30
 
-  linux-build:
-    name: Linux ${{ matrix.name }}
+  ubuntu-x64-cpu:
+    name: Ubuntu x64 (CPU)
     needs: release-metadata
-    if: ${{ !inputs.skip_build }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # CPU builds
-          - name: x64 (CPU)
-            os: ubuntu-22.04
-            arch: x86_64
-            cc: gcc
-            cxx: g++
-            flags: "-std=c++17 -O3 -DNDEBUG"
-            libs: ""
-            defines: ""
-            artifact: bin-ubuntu-x64-cpu
-
-          - name: arm64 (CPU)
-            os: ubuntu-24.04-arm
-            arch: aarch64
-            cc: gcc-14
-            cxx: g++-14
-            flags: "-std=c++17 -O3 -DNDEBUG"
-            libs: ""
-            defines: ""
-            artifact: bin-ubuntu-arm64-cpu
-
-          # Vulkan builds
-          - name: x64 (Vulkan)
-            os: ubuntu-22.04
-            arch: x86_64
-            cc: gcc
-            cxx: g++
-            flags: "-std=c++17 -O3 -DNDEBUG"
-            libs: "-lvulkan"
-            defines: "-DENABLE_VULKAN"
-            deps: "libvulkan-dev vulkan-tools"
-            artifact: bin-ubuntu-x64-vulkan
-
-          - name: arm64 (Vulkan)
-            os: ubuntu-24.04-arm
-            arch: aarch64
-            cc: gcc-14
-            cxx: g++-14
-            flags: "-std=c++17 -O3 -DNDEBUG"
-            libs: "-lvulkan"
-            defines: "-DENABLE_VULKAN"
-            deps: "libvulkan-dev vulkan-tools gcc-14 g++-14"
-            artifact: bin-ubuntu-arm64-vulkan
-
-          # CUDA 12 build
-          - name: x64 (CUDA 12)
-            os: ubuntu-22.04
-            arch: x86_64
-            cc: gcc
-            cxx: g++
-            flags: "-std=c++17 -O3 -DNDEBUG"
-            libs: "-lcudart -lcublas"
-            defines: "-DENABLE_CUDA"
-            cuda: "12.4"
-            artifact: bin-ubuntu-x64-cuda12
-
-          # CUDA 13 build
-          - name: x64 (CUDA 13)
-            os: ubuntu-22.04
-            arch: x86_64
-            cc: gcc
-            cxx: g++
-            flags: "-std=c++17 -O3 -DNDEBUG"
-            libs: "-lcudart -lcublas"
-            defines: "-DENABLE_CUDA"
-            cuda: "13.3"
-            artifact: bin-ubuntu-x64-cuda13
-
-          # SYCL builds
-          - name: x64 (SYCL FP32)
-            os: ubuntu-22.04
-            arch: x86_64
-            cc: clang
-            cxx: clang++
-            flags: "-std=c++17 -O3 -DNDEBUG -fsycl -fsycl-targets=spir64"
-            libs: ""
-            defines: "-DENABLE_SYCL"
-            sycl: true
-            artifact: bin-ubuntu-x64-sycl-fp32
-
-          - name: x64 (SYCL FP16)
-            os: ubuntu-22.04
-            arch: x86_64
-            cc: clang
-            cxx: clang++
-            flags: "-std=c++17 -O3 -DNDEBUG -fsycl -fsycl-targets=spir64"
-            libs: ""
-            defines: "-DENABLE_SYCL -DENABLE_FP16"
-            sycl: true
-            artifact: bin-ubuntu-x64-sycl-fp16
-
-          # OpenCL build
-          - name: x64 (OpenCL)
-            os: ubuntu-22.04
-            arch: x86_64
-            cc: gcc
-            cxx: g++
-            flags: "-std=c++17 -O3 -DNDEBUG"
-            libs: "-lOpenCL"
-            defines: "-DENABLE_OPENCL"
-            deps: "ocl-icd-opencl-dev opencl-headers"
-            artifact: bin-ubuntu-x64-opencl
-
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Install base dependencies
+      - name: Dependencies
+        shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y build-essential file ${{ matrix.deps || '' }}
+          sudo apt-get install -y build-essential file
 
-      - name: Install CUDA
-        if: matrix.cuda
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -O3 -DNDEBUG \
+            -I. -Iinclude \
+            -o llm main.cpp
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-x64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cpu.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  ubuntu-arm64-cpu:
+    name: Ubuntu arm64 (CPU)
+    needs: release-metadata
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file
+
+      - name: Toolchain workaround
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y gcc-14 g++-14
+          echo "CC=gcc-14" >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ${CXX:-g++} -std=c++17 -O3 -DNDEBUG \
+            -I. -Iinclude \
+            -o llm main.cpp
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-arm64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-cpu.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  ubuntu-x64-vulkan:
+    name: Ubuntu x64 (Vulkan)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file libvulkan-dev vulkan-tools
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -O3 -DNDEBUG -DENABLE_VULKAN \
+            -I. -Iinclude \
+            -o llm main.cpp -lvulkan
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-x64-vulkan
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  ubuntu-arm64-vulkan:
+    name: Ubuntu arm64 (Vulkan)
+    needs: release-metadata
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file libvulkan-dev vulkan-tools gcc-14 g++-14
+          echo "CC=gcc-14" >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ${CXX:-g++} -std=c++17 -O3 -DNDEBUG -DENABLE_VULKAN \
+            -I. -Iinclude \
+            -o llm main.cpp -lvulkan
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-arm64-vulkan
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  ubuntu-x64-cuda12:
+    name: Ubuntu x64 (CUDA 12)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file
+
+      - name: Install CUDA 12
         uses: Jimver/cuda-toolkit@v0.2.21
         with:
-          cuda: ${{ matrix.cuda }}
-          sub-packages: '[]'
-          method: network
-          non-cuda-sub-packages: '[]'
+          cuda: "12.4"
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "llm.cu" ]; then
+            nvcc -O3 -std=c++17 -DENABLE_CUDA \
+              -I. -Iinclude -lcublas \
+              -o llm llm.cu
+          else
+            g++ -std=c++17 -O3 -DNDEBUG -DENABLE_CUDA \
+              -I. -Iinclude \
+              -o llm main.cpp -lcudart -lcublas
+          fi
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cuda12"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          CUDA_LIB_DIR="/usr/local/cuda/lib64"
+          if [ -d "$CUDA_LIB_DIR" ]; then
+            cp "$CUDA_LIB_DIR"/libcudart.so* "${ARTIFACT_ROOT}/${package}/" 2>/dev/null || true
+            cp "$CUDA_LIB_DIR"/libcublas.so* "${ARTIFACT_ROOT}/${package}/" 2>/dev/null || true
+          fi
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-x64-cuda12
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cuda12.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  ubuntu-x64-cuda13:
+    name: Ubuntu x64 (CUDA 13)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file
+
+      - name: Install CUDA 13
+        uses: Jimver/cuda-toolkit@v0.2.21
+        with:
+          cuda: "13.3"
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "llm.cu" ]; then
+            nvcc -O3 -std=c++17 -DENABLE_CUDA \
+              -I. -Iinclude -lcublas \
+              -o llm llm.cu
+          else
+            g++ -std=c++17 -O3 -DNDEBUG -DENABLE_CUDA \
+              -I. -Iinclude \
+              -o llm main.cpp -lcudart -lcublas
+          fi
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cuda13"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          CUDA_LIB_DIR="/usr/local/cuda/lib64"
+          if [ -d "$CUDA_LIB_DIR" ]; then
+            cp "$CUDA_LIB_DIR"/libcudart.so* "${ARTIFACT_ROOT}/${package}/" 2>/dev/null || true
+            cp "$CUDA_LIB_DIR"/libcublas.so* "${ARTIFACT_ROOT}/${package}/" 2>/dev/null || true
+          fi
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-x64-cuda13
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cuda13.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  ubuntu-x64-sycl-fp32:
+    name: Ubuntu x64 (SYCL FP32)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file
 
       - name: Install SYCL
-        if: matrix.sycl
+        shell: bash
         run: |
           set -euo pipefail
           wget -q https://github.com/intel/llvm/releases/download/nightly-2024-07-01/sycl_linux.tar.gz
@@ -362,220 +581,161 @@ jobs:
           sudo tar -xzf sycl_linux.tar.gz -C /opt/intel/sycl
           echo "/opt/intel/sycl/bin" >> "$GITHUB_PATH"
 
-      - name: Setup ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: linux-${{ matrix.name }}-${{ matrix.arch }}
-          max-size: 500M
-
       - name: Build
-        env:
-          CC: ${{ matrix.cc }}
-          CXX: ${{ matrix.cxx }}
+        shell: bash
         run: |
           set -euo pipefail
-          # Detect if we have llm.cu for CUDA builds
-          if [ -n "${{ matrix.cuda }}" ] && [ -f "llm.cu" ]; then
-            nvcc -O3 -std=c++17 ${{ matrix.defines }} \
-              -I. -Iinclude -lcublas -o llm llm.cu
-          else
-            ${{ matrix.cxx }} ${{ matrix.flags }} ${{ matrix.defines }} \
-              -I. -Iinclude -o llm main.cpp ${{ matrix.libs }}
-          fi
+          export PATH="/opt/intel/sycl/bin:$PATH"
+          clang++ -std=c++17 -O3 -DNDEBUG -DENABLE_SYCL \
+            -fsycl -fsycl-targets=spir64 \
+            -I. -Iinclude \
+            -o llm main.cpp
           file llm
 
       - name: Smoke test
-        if: matrix.cuda == ''
+        shell: bash
         run: |
           set +e
-          ./llm --chat >/dev/null 2>&1 || true
+          ./llm --chat >/dev/null 2>&1
           exit 0
 
-      - name: Pack
+      - name: Pack artifacts
+        shell: bash
         run: |
           set -euo pipefail
-          pkg="${REPO_NAME}-${{ needs.release-metadata.outputs.tag_name }}-${{ matrix.artifact }}"
-          mkdir -p "${ARTIFACT_ROOT}/${pkg}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${pkg}/"
-          # Include CUDA runtime libs if applicable
-          if [ -n "${{ matrix.cuda }}" ]; then
-            CUDA_LIB_DIR="/usr/local/cuda/lib64"
-            if [ -d "$CUDA_LIB_DIR" ]; then
-              cp "$CUDA_LIB_DIR"/libcudart.so* "${ARTIFACT_ROOT}/${pkg}/" 2>/dev/null || true
-              cp "$CUDA_LIB_DIR"/libcublas.so* "${ARTIFACT_ROOT}/${pkg}/" 2>/dev/null || true
-            fi
-          fi
-          tar -czf "${pkg}.tar.gz" -C "${ARTIFACT_ROOT}" "${pkg}"
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: "${{ env.REPO_NAME }}-${{ needs.release-metadata.outputs.tag_name }}-${{ matrix.artifact }}.tar.gz"
+          name: llm.cpp-bin-ubuntu-x64-sycl-fp32
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32.tar.gz
           if-no-files-found: error
           retention-days: 30
 
-  windows-build:
-    name: Windows ${{ matrix.name }}
+  ubuntu-x64-sycl-fp16:
+    name: Ubuntu x64 (SYCL FP16)
     needs: release-metadata
-    if: ${{ !inputs.skip_build }}
-    runs-on: windows-2022
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: x64 (CPU)
-            arch: x64
-            cl_arch: x64
-            defines: ""
-            libs: ""
-            artifact: bin-windows-x64-cpu
-
-          - name: arm64 (CPU)
-            arch: arm64
-            cl_arch: amd64_arm64
-            defines: ""
-            libs: ""
-            artifact: bin-windows-arm64-cpu
-
-          - name: x64 (CUDA 12)
-            arch: x64
-            cl_arch: x64
-            defines: "/DENABLE_CUDA"
-            cuda: "12.4"
-            cuda_path: "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4"
-            artifact: bin-windows-x64-cuda12
-
-          - name: x64 (CUDA 13)
-            arch: x64
-            cl_arch: x64
-            defines: "/DENABLE_CUDA"
-            cuda: "13.3"
-            cuda_path: "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3"
-            artifact: bin-windows-x64-cuda13
-
-          - name: x64 (Vulkan)
-            arch: x64
-            cl_arch: x64
-            defines: "/DENABLE_VULKAN"
-            vulkan_sdk: "1.3.290.0"
-            artifact: bin-windows-x64-vulkan
-
-          - name: x64 (OpenCL)
-            arch: x64
-            cl_arch: x64
-            defines: "/DENABLE_OPENCL"
-            libs: "OpenCL.lib"
-            artifact: bin-windows-x64-opencl
-
-    defaults:
-      run:
-        shell: cmd
-
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Clone
+        uses: actions/checkout@v7
         with:
-          arch: ${{ matrix.cl_arch }}
+          fetch-depth: 0
 
-      - name: Install CUDA
-        if: matrix.cuda
-        shell: pwsh
+      - name: Dependencies
+        shell: bash
         run: |
-          choco install cuda --version=${{ matrix.cuda }} -y --no-progress
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file
 
-      - name: Install Vulkan SDK
-        if: matrix.vulkan_sdk
-        uses: johnadali/vulkan-sdk-setup-action@v1
-        with:
-          version: ${{ matrix.vulkan_sdk }}
+      - name: Install SYCL
+        shell: bash
+        run: |
+          set -euo pipefail
+          wget -q https://github.com/intel/llvm/releases/download/nightly-2024-07-01/sycl_linux.tar.gz
+          sudo mkdir -p /opt/intel/sycl
+          sudo tar -xzf sycl_linux.tar.gz -C /opt/intel/sycl
+          echo "/opt/intel/sycl/bin" >> "$GITHUB_PATH"
 
       - name: Build
+        shell: bash
         run: |
-          set CL_FLAGS=/nologo /std:c++17 /O2 /DNDEBUG /EHsc /Iinclude /I. ${{ matrix.defines }}
-          set LINK_FLAGS=/Fe:llm.exe
-          if "${{ matrix.cuda }}" neq "" (
-            set "CUDA_INC=/I${{ matrix.cuda_path }}\include"
-            set "CUDA_LIB=${{ matrix.cuda_path }}\lib\x64\cudart.lib"
-            cl %CL_FLAGS% %CUDA_INC% main.cpp %LINK_FLAGS% /link %CUDA_LIB%
-          ) else if "${{ matrix.vulkan_sdk }}" neq "" (
-            set "VULKAN_INC=/I%VULKAN_SDK%\Include"
-            set "VULKAN_LIB=%VULKAN_SDK%\Lib\vulkan-1.lib"
-            cl %CL_FLAGS% %VULKAN_INC% main.cpp %LINK_FLAGS% /link %VULKAN_LIB%
-          ) else (
-            cl %CL_FLAGS% main.cpp %LINK_FLAGS% ${{ matrix.libs }}
-          )
+          set -euo pipefail
+          export PATH="/opt/intel/sycl/bin:$PATH"
+          clang++ -std=c++17 -O3 -DNDEBUG -DENABLE_SYCL -DENABLE_FP16 \
+            -fsycl -fsycl-targets=spir64 \
+            -I. -Iinclude \
+            -o llm main.cpp
+          file llm
 
       - name: Smoke test
-        if: matrix.cuda == ''
-        shell: pwsh
+        shell: bash
         run: |
-          $ErrorActionPreference = 'Continue'
-          & .\llm.exe --chat | Out-Null
+          set +e
+          ./llm --chat >/dev/null 2>&1
           exit 0
 
-      - name: Pack
-        shell: pwsh
+      - name: Pack artifacts
+        shell: bash
         run: |
-          $pkg = "${env:REPO_NAME}-${{ needs.release-metadata.outputs.tag_name }}-${{ matrix.artifact }}"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${pkg}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${pkg}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${pkg}\"
-          # Copy CUDA DLLs if applicable
-          if ("${{ matrix.cuda }}" -ne "") {
-            $cudaBin = "${{ matrix.cuda_path }}\bin"
-            if (Test-Path $cudaBin) {
-              Copy-Item "$cudaBin\cudart64_*.dll" "${env:ARTIFACT_ROOT}\${pkg}\" -ErrorAction SilentlyContinue
-              Copy-Item "$cudaBin\cublas64_*.dll" "${env:ARTIFACT_ROOT}\${pkg}\" -ErrorAction SilentlyContinue
-            }
-          }
-          # Copy Vulkan DLL if applicable
-          if ("${{ matrix.vulkan_sdk }}" -ne "") {
-            $vulkanDll = "$env:VULKAN_SDK\Bin\vulkan-1.dll"
-            if (Test-Path $vulkanDll) {
-              Copy-Item $vulkanDll "${env:ARTIFACT_ROOT}\${pkg}\" -ErrorAction SilentlyContinue
-            }
-          }
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${pkg}\*" -DestinationPath "${pkg}.zip" -Force
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: "${{ env.REPO_NAME }}-${{ needs.release-metadata.outputs.tag_name }}-${{ matrix.artifact }}.zip"
+          name: llm.cpp-bin-ubuntu-x64-sycl-fp16
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz
           if-no-files-found: error
           retention-days: 30
 
-
-  android-build:
-    name: Android ${{ matrix.name }}
+  ubuntu-x64-opencl:
+    name: Ubuntu x64 (OpenCL)
     needs: release-metadata
-    if: ${{ !inputs.skip_build }}
     runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: arm64 (CPU)
-            target: aarch64-linux-android21
-            arch: arm64
-            defines: ""
-            artifact: bin-android-arm64-cpu
-
-          - name: arm64 (Vulkan)
-            target: aarch64-linux-android21
-            arch: arm64
-            defines: "-DENABLE_VULKAN"
-            artifact: bin-android-arm64-vulkan
-
-          - name: x86_64 (CPU)
-            target: x86_64-linux-android21
-            arch: x86_64
-            defines: ""
-            artifact: bin-android-x86_64-cpu
-
     steps:
-      - uses: actions/checkout@v7
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential file ocl-icd-opencl-dev opencl-headers
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -O3 -DNDEBUG -DENABLE_OPENCL \
+            -I. -Iinclude \
+            -o llm main.cpp -lOpenCL
+          file llm
+
+      - name: Smoke test
+        shell: bash
+        run: |
+          set +e
+          ./llm --chat >/dev/null 2>&1
+          exit 0
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-opencl"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-ubuntu-x64-opencl
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-opencl.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  android-arm64-cpu:
+    name: Android arm64 (CPU)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
@@ -584,51 +744,382 @@ jobs:
           link-to-sdk: true
 
       - name: Build
+        shell: bash
         run: |
           set -euo pipefail
           export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
-          clang++ --target=${{ matrix.target }} -std=c++17 -O3 -DNDEBUG \
-            ${{ matrix.defines }} -I. -Iinclude -o llm main.cpp
+          clang++ --target=aarch64-linux-android21 \
+            -std=c++17 -O3 -DNDEBUG \
+            -I. -Iinclude \
+            -o llm main.cpp
           file llm
 
       - name: Verify architecture
+        shell: bash
         run: |
           set -euo pipefail
-          file llm | grep -q "${{ matrix.arch }}"
+          file llm | grep -q "ARM aarch64"
 
-      - name: Pack
+      - name: Pack artifacts
+        shell: bash
         run: |
           set -euo pipefail
-          pkg="${REPO_NAME}-${{ needs.release-metadata.outputs.tag_name }}-${{ matrix.artifact }}"
-          mkdir -p "${ARTIFACT_ROOT}/${pkg}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${pkg}/"
-          tar -czf "${pkg}.tar.gz" -C "${ARTIFACT_ROOT}" "${pkg}"
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: "${{ env.REPO_NAME }}-${{ needs.release-metadata.outputs.tag_name }}-${{ matrix.artifact }}.tar.gz"
+          name: llm.cpp-bin-android-arm64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz
           if-no-files-found: error
           retention-days: 30
-  wasm-build:
-    name: WASM ${{ matrix.name }}
+
+  android-arm64-vulkan:
+    name: Android arm64 (Vulkan)
     needs: release-metadata
-    if: ${{ !inputs.skip_build }}
     runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: (CPU)
-            simd: ""
-            artifact: bin-wasm-cpu
-
-          - name: (SIMD)
-            simd: "-msimd128 -msse -msse2"
-            artifact: bin-wasm-simd
-
     steps:
-      - uses: actions/checkout@v7
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          link-to-sdk: true
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          clang++ --target=aarch64-linux-android21 \
+            -std=c++17 -O3 -DNDEBUG -DENABLE_VULKAN \
+            -I. -Iinclude \
+            -o llm main.cpp
+          file llm
+
+      - name: Verify architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          file llm | grep -q "ARM aarch64"
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-vulkan"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-android-arm64-vulkan
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-vulkan.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  android-x86_64-cpu:
+    name: Android x86_64 (CPU)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          link-to-sdk: true
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          clang++ --target=x86_64-linux-android21 \
+            -std=c++17 -O3 -DNDEBUG \
+            -I. -Iinclude \
+            -o llm main.cpp
+          file llm
+
+      - name: Verify architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          file llm | grep -q "x86-64"
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-x86_64-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-android-x86_64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-x86_64-cpu.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-x64-cpu:
+    name: Windows x64 (CPU)
+    needs: release-metadata
+    runs-on: windows-2022
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cl /nologo /std:c++17 /O2 /DNDEBUG /EHsc /Iinclude /I. main.cpp /Fe:llm.exe
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          & .\llm.exe --chat | Out-Null
+          exit 0
+
+      - name: Pack artifacts
+        shell: pwsh
+        run: |
+          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cpu"
+          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
+          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-windows-x64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cpu.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-arm64-cpu:
+    name: Windows arm64 (CPU)
+    needs: release-metadata
+    runs-on: windows-2022
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" amd64_arm64
+          cl /nologo /std:c++17 /O2 /DNDEBUG /EHsc /Iinclude /I. main.cpp /Fe:llm.exe
+
+      - name: Pack artifacts
+        shell: pwsh
+        run: |
+          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu"
+          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
+          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-windows-arm64-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-x64-cuda12:
+    name: Windows x64 (CUDA 12)
+    needs: release-metadata
+    runs-on: windows-2022
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install CUDA 12
+        shell: pwsh
+        run: |
+          choco install cuda --version=12.4 -y --no-progress
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\include" main.cpp /Fe:llm.exe /link "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\lib\x64\cudart.lib"
+
+      - name: Pack artifacts
+        shell: pwsh
+        run: |
+          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda12"
+          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
+          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          $cudaBin = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin"
+          if (Test-Path $cudaBin) {
+            Copy-Item "$cudaBin\cudart64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
+            Copy-Item "$cudaBin\cublas64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
+          }
+          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-windows-x64-cuda12
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda12.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-x64-cuda13:
+    name: Windows x64 (CUDA 13)
+    needs: release-metadata
+    runs-on: windows-2022
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install CUDA 13
+        shell: pwsh
+        run: |
+          choco install cuda --version=13.3 -y --no-progress
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\include" main.cpp /Fe:llm.exe /link "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\lib\x64\cudart.lib"
+
+      - name: Pack artifacts
+        shell: pwsh
+        run: |
+          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13"
+          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
+          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          $cudaBin = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3\bin"
+          if (Test-Path $cudaBin) {
+            Copy-Item "$cudaBin\cudart64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
+            Copy-Item "$cudaBin\cublas64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
+          }
+          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-windows-x64-cuda13
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-x64-vulkan:
+    name: Windows x64 (Vulkan)
+    needs: release-metadata
+    runs-on: windows-2022
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install Vulkan SDK
+        uses: johnadali/vulkan-sdk-setup-action@v1
+        with:
+          version: 1.3.290.0
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_VULKAN /EHsc /Iinclude /I. /I"%VULKAN_SDK%\Include" main.cpp /Fe:llm.exe /link "%VULKAN_SDK%\Lib\vulkan-1.lib"
+
+      - name: Pack artifacts
+        shell: pwsh
+        run: |
+          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-vulkan"
+          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
+          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          $vulkanDll = "$env:VULKAN_SDK\Bin\vulkan-1.dll"
+          if (Test-Path $vulkanDll) {
+            Copy-Item $vulkanDll "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
+          }
+          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-windows-x64-vulkan
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-vulkan.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-x64-opencl:
+    name: Windows x64 (OpenCL)
+    needs: release-metadata
+    runs-on: windows-2022
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_OPENCL /EHsc /Iinclude /I. main.cpp /Fe:llm.exe /link OpenCL.lib
+
+      - name: Pack artifacts
+        shell: pwsh
+        run: |
+          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-opencl"
+          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
+          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-windows-x64-opencl
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-opencl.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  wasm-cpu:
+    name: WASM (CPU)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
@@ -637,10 +1128,10 @@ jobs:
           actions-cache-folder: emsdk-cache
 
       - name: Build
+        shell: bash
         run: |
           set -euo pipefail
           emcc -O3 -std=c++17 -DNDEBUG \
-            ${{ matrix.simd }} \
             -s WASM=1 -s EXPORT_ALL=1 -s ALLOW_MEMORY_GROWTH=1 \
             -s MODULARIZE=1 -s EXPORT_NAME="LLMModule" \
             -I. -Iinclude \
@@ -648,238 +1139,220 @@ jobs:
             -o llm.js
           ls -la llm.wasm llm.js
 
-      - name: Pack
+      - name: Pack artifacts
+        shell: bash
         run: |
           set -euo pipefail
-          pkg="${REPO_NAME}-${{ needs.release-metadata.outputs.tag_name }}-${{ matrix.artifact }}"
-          mkdir -p "${ARTIFACT_ROOT}/${pkg}"
-          cp llm.js llm.wasm README.md LICENSE "${ARTIFACT_ROOT}/${pkg}/"
-          tar -czf "${pkg}.tar.gz" -C "${ARTIFACT_ROOT}" "${pkg}"
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-wasm-cpu"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm.js llm.wasm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: "${{ env.REPO_NAME }}-${{ needs.release-metadata.outputs.tag_name }}-${{ matrix.artifact }}.tar.gz"
+          name: llm.cpp-bin-wasm-cpu
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-wasm-cpu.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  wasm-simd:
+    name: WASM (SIMD)
+    needs: release-metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+          actions-cache-folder: emsdk-cache
+
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          emcc -O3 -std=c++17 -DNDEBUG \
+            -msimd128 -msse -msse2 \
+            -s WASM=1 -s EXPORT_ALL=1 -s ALLOW_MEMORY_GROWTH=1 \
+            -s MODULARIZE=1 -s EXPORT_NAME="LLMModule" \
+            -I. -Iinclude \
+            main.cpp \
+            -o llm.js
+          ls -la llm.wasm llm.js
+
+      - name: Pack artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-wasm-simd"
+          mkdir -p "${ARTIFACT_ROOT}/${package}"
+          cp llm.js llm.wasm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
+          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm.cpp-bin-wasm-simd
+          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-wasm-simd.tar.gz
           if-no-files-found: error
           retention-days: 30
 
   publish-release:
-    name: Publish GitHub Release
+    name: Publish GitHub release
     needs:
       - release-metadata
       - macos-arm64-cpu
       - macos-arm64-metal
       - macos-x64-cpu
       - ios-xcframework
-      - linux-build
-      - windows-build
-      - android-build
-      - wasm-build
+      - ubuntu-x64-cpu
+      - ubuntu-arm64-cpu
+      - ubuntu-x64-vulkan
+      - ubuntu-arm64-vulkan
+      - ubuntu-x64-cuda12
+      - ubuntu-x64-cuda13
+      - ubuntu-x64-sycl-fp32
+      - ubuntu-x64-sycl-fp16
+      - ubuntu-x64-opencl
+      - android-arm64-cpu
+      - android-arm64-vulkan
+      - android-x86_64-cpu
+      - windows-x64-cpu
+      - windows-arm64-cpu
+      - windows-x64-cuda12
+      - windows-x64-cuda13
+      - windows-x64-vulkan
+      - windows-x64-opencl
+      - wasm-cpu
+      - wasm-simd
     if: always() && needs.release-metadata.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       TAG: ${{ needs.release-metadata.outputs.tag_name }}
-      IS_PRERELEASE: ${{ needs.release-metadata.outputs.is_prerelease }}
     steps:
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - name: List downloaded artifacts
-        run: ls -la dist/
-
-      - name: Generate llama.cpp style release notes
+      - name: Generate release notes
         shell: bash
         env:
-          # macOS results
           RES_MACOS_ARM_CPU: ${{ needs.macos-arm64-cpu.result }}
           RES_MACOS_ARM_METAL: ${{ needs.macos-arm64-metal.result }}
           RES_MACOS_X64: ${{ needs.macos-x64-cpu.result }}
           RES_IOS: ${{ needs.ios-xcframework.result }}
-          # Linux results (from matrix - need to check overall job result)
-          RES_LINUX: ${{ needs.linux-build.result }}
-          # Windows results
-          RES_WINDOWS: ${{ needs.windows-build.result }}
-          # Android results
-          RES_ANDROID: ${{ needs.android-build.result }}
-          # WASM results
-          RES_WASM: ${{ needs.wasm-build.result }}
-          CHANGELOG: ${{ needs.release-metadata.outputs.changelog }}
+          RES_UBUNTU_X64_CPU: ${{ needs.ubuntu-x64-cpu.result }}
+          RES_UBUNTU_ARM_CPU: ${{ needs.ubuntu-arm64-cpu.result }}
+          RES_UBUNTU_X64_VULKAN: ${{ needs.ubuntu-x64-vulkan.result }}
+          RES_UBUNTU_ARM_VULKAN: ${{ needs.ubuntu-arm64-vulkan.result }}
+          RES_UBUNTU_CUDA12: ${{ needs.ubuntu-x64-cuda12.result }}
+          RES_UBUNTU_CUDA13: ${{ needs.ubuntu-x64-cuda13.result }}
+          RES_UBUNTU_SYCL32: ${{ needs.ubuntu-x64-sycl-fp32.result }}
+          RES_UBUNTU_SYCL16: ${{ needs.ubuntu-x64-sycl-fp16.result }}
+          RES_UBUNTU_OPENCL: ${{ needs.ubuntu-x64-opencl.result }}
+          RES_ANDROID_ARM_CPU: ${{ needs.android-arm64-cpu.result }}
+          RES_ANDROID_ARM_VULKAN: ${{ needs.android-arm64-vulkan.result }}
+          RES_ANDROID_X86_64: ${{ needs.android-x86_64-cpu.result }}
+          RES_WIN_X64_CPU: ${{ needs.windows-x64-cpu.result }}
+          RES_WIN_ARM_CPU: ${{ needs.windows-arm64-cpu.result }}
+          RES_WIN_CUDA12: ${{ needs.windows-x64-cuda12.result }}
+          RES_WIN_CUDA13: ${{ needs.windows-x64-cuda13.result }}
+          RES_WIN_VULKAN: ${{ needs.windows-x64-vulkan.result }}
+          RES_WIN_OPENCL: ${{ needs.windows-x64-opencl.result }}
+          RES_WASM_CPU: ${{ needs.wasm-cpu.result }}
+          RES_WASM_SIMD: ${{ needs.wasm-simd.result }}
         run: |
           set -euo pipefail
           TAG="${{ env.TAG }}"
 
-          # Helper: check if a specific artifact file exists
           has_artifact() {
-            ls dist/ | grep -q "$1" 2>/dev/null
+            ls dist/ 2>/dev/null | grep -q "$1"
           }
 
-          # Helper: get artifact filename
           get_filename() {
-            ls dist/ | grep "$1" | head -1 || echo ""
+            ls dist/ 2>/dev/null | grep "$1" | head -1 || echo ""
+          }
+
+          print_item() {
+            local result="$1"
+            local label="$2"
+            local artifact_key="$3"
+            if [ "$result" == "success" ] && has_artifact "$artifact_key"; then
+              F=$(get_filename "$artifact_key")
+              echo "- ${label} — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
+            else
+              echo "- ${label} — DISABLED"
+            fi
           }
 
           {
-      
-            echo "$CHANGELOG"
-            echo ""
-            echo "---"
-            echo ""
-
             echo "**Website:**"
             echo ""
-            echo "- https://llm.cpp (https://lmgnu.github.io/llm.app/)"
+            echo "- https://llm.cpp"
             echo ""
-
-
             echo "**macOS / iOS:**"
             echo ""
-
-            if has_artifact "macos-arm64-cpu"; then
-              F=$(get_filename "macos-arm64-cpu")
-              echo "- macOS Apple Silicon (arm64) — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
-            else
-              echo "- macOS Apple Silicon (arm64) — DISABLED"
-            fi
-
-            if has_artifact "macos-arm64-metal"; then
-              F=$(get_filename "macos-arm64-metal")
-              echo "- macOS Apple Silicon (arm64, Metal enabled) — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
-            else
-              echo "- macOS Apple Silicon (arm64, Metal enabled) — DISABLED"
-            fi
-
-            if has_artifact "macos-x64"; then
-              F=$(get_filename "macos-x64")
-              echo "- macOS Intel (x64) — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
-            else
-              echo "- macOS Intel (x64) — DISABLED"
-            fi
-
-            if has_artifact "ios-xcframework"; then
-              F=$(get_filename "ios-xcframework")
-              echo "- iOS XCFramework — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
-            else
-              echo "- iOS XCFramework — DISABLED"
-            fi
+            print_item "$RES_MACOS_ARM_CPU" "macOS Apple Silicon (arm64)" "macos-arm64-cpu"
+            print_item "$RES_MACOS_ARM_METAL" "macOS Apple Silicon (arm64, Metal enabled)" "macos-arm64-metal"
+            print_item "$RES_MACOS_X64" "macOS Intel (x64)" "macos-x64"
+            print_item "$RES_IOS" "iOS XCFramework" "ios-xcframework"
             echo ""
-
-            # ─── Linux ───
             echo "**Linux:**"
             echo ""
-
-            LINUX_BUILDS=(
-              "ubuntu-x64-cpu:Ubuntu x64 (CPU)"
-              "ubuntu-arm64-cpu:Ubuntu arm64 (CPU)"
-              "ubuntu-x64-cuda12:Ubuntu x64 (CUDA 12) — CUDA 12.4 DLLs"
-              "ubuntu-x64-cuda13:Ubuntu x64 (CUDA 13) — CUDA 13.3 DLLs"
-              "ubuntu-x64-vulkan:Ubuntu x64 (Vulkan)"
-              "ubuntu-arm64-vulkan:Ubuntu arm64 (Vulkan)"
-              "ubuntu-x64-sycl-fp32:Ubuntu x64 (SYCL FP32)"
-              "ubuntu-x64-sycl-fp16:Ubuntu x64 (SYCL FP16)"
-              "ubuntu-x64-opencl:Ubuntu x64 (OpenCL)"
-            )
-
-            for item in "${LINUX_BUILDS[@]}"; do
-              artifact_key="${item%%:*}"
-              label="${item#*:}"
-              if has_artifact "$artifact_key"; then
-                F=$(get_filename "$artifact_key")
-                echo "- ${label} — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
-              else
-                echo "- ${label} — DISABLED"
-              fi
-            done
+            print_item "$RES_UBUNTU_X64_CPU" "Ubuntu x64 (CPU)" "ubuntu-x64-cpu"
+            print_item "$RES_UBUNTU_ARM_CPU" "Ubuntu arm64 (CPU)" "ubuntu-arm64-cpu"
+            print_item "$RES_UBUNTU_X64_VULKAN" "Ubuntu x64 (Vulkan)" "ubuntu-x64-vulkan"
+            print_item "$RES_UBUNTU_ARM_VULKAN" "Ubuntu arm64 (Vulkan)" "ubuntu-arm64-vulkan"
+            print_item "$RES_UBUNTU_CUDA12" "Ubuntu x64 (CUDA 12) — CUDA 12.4 DLLs" "ubuntu-x64-cuda12"
+            print_item "$RES_UBUNTU_CUDA13" "Ubuntu x64 (CUDA 13) — CUDA 13.3 DLLs" "ubuntu-x64-cuda13"
+            print_item "$RES_UBUNTU_SYCL32" "Ubuntu x64 (SYCL FP32)" "ubuntu-x64-sycl-fp32"
+            print_item "$RES_UBUNTU_SYCL16" "Ubuntu x64 (SYCL FP16)" "ubuntu-x64-sycl-fp16"
+            print_item "$RES_UBUNTU_OPENCL" "Ubuntu x64 (OpenCL)" "ubuntu-x64-opencl"
             echo ""
-
-            # ─── Android ───
             echo "**Android:**"
             echo ""
-
-            ANDROID_BUILDS=(
-              "android-arm64-cpu:Android arm64 (CPU)"
-              "android-arm64-vulkan:Android arm64 (Vulkan)"
-              "android-x86_64-cpu:Android x86_64 (CPU)"
-            )
-
-            for item in "${ANDROID_BUILDS[@]}"; do
-              artifact_key="${item%%:*}"
-              label="${item#*:}"
-              if has_artifact "$artifact_key"; then
-                F=$(get_filename "$artifact_key")
-                echo "- ${label} — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
-              else
-                echo "- ${label} — DISABLED"
-              fi
-            done
+            print_item "$RES_ANDROID_ARM_CPU" "Android arm64 (CPU)" "android-arm64-cpu"
+            print_item "$RES_ANDROID_ARM_VULKAN" "Android arm64 (Vulkan)" "android-arm64-vulkan"
+            print_item "$RES_ANDROID_X86_64" "Android x86_64 (CPU)" "android-x86_64-cpu"
             echo ""
-
-            # ─── Windows ───
             echo "**Windows:**"
             echo ""
-
-            WINDOWS_BUILDS=(
-              "windows-x64-cpu:Windows x64 (CPU)"
-              "windows-arm64-cpu:Windows arm64 (CPU)"
-              "windows-x64-cuda12:Windows x64 (CUDA 12) — CUDA 12.4 DLLs"
-              "windows-x64-cuda13:Windows x64 (CUDA 13) — CUDA 13.3 DLLs"
-              "windows-x64-vulkan:Windows x64 (Vulkan)"
-              "windows-x64-opencl:Windows x64 (OpenCL)"
-            )
-
-            for item in "${WINDOWS_BUILDS[@]}"; do
-              artifact_key="${item%%:*}"
-              label="${item#*:}"
-              if has_artifact "$artifact_key"; then
-                F=$(get_filename "$artifact_key")
-                echo "- ${label} — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
-              else
-                echo "- ${label} — DISABLED"
-              fi
-            done
+            print_item "$RES_WIN_X64_CPU" "Windows x64 (CPU)" "windows-x64-cpu"
+            print_item "$RES_WIN_ARM_CPU" "Windows arm64 (CPU)" "windows-arm64-cpu"
+            print_item "$RES_WIN_CUDA12" "Windows x64 (CUDA 12) — CUDA 12.4 DLLs" "windows-x64-cuda12"
+            print_item "$RES_WIN_CUDA13" "Windows x64 (CUDA 13) — CUDA 13.3 DLLs" "windows-x64-cuda13"
+            print_item "$RES_WIN_VULKAN" "Windows x64 (Vulkan)" "windows-x64-vulkan"
+            print_item "$RES_WIN_OPENCL" "Windows x64 (OpenCL)" "windows-x64-opencl"
             echo ""
-
-            # ─── WebAssembly ───
             echo "**WebAssembly:**"
             echo ""
-
-            if has_artifact "wasm-cpu"; then
-              F=$(get_filename "wasm-cpu")
-              echo "- WASM (CPU) — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
-            else
-              echo "- WASM (CPU) — DISABLED"
-            fi
-
-            if has_artifact "wasm-simd"; then
-              F=$(get_filename "wasm-simd")
-              echo "- WASM (SIMD) — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
-            else
-              echo "- WASM (SIMD) — DISABLED"
-            fi
+            print_item "$RES_WASM_CPU" "WASM (CPU)" "wasm-cpu"
+            print_item "$RES_WASM_SIMD" "WASM (SIMD)" "wasm-simd"
             echo ""
-
-            # ─── Footer ───
             echo "---"
             echo ""
-            echo "Built from commit \`${{ needs.release-metadata.outputs.short_sha }}\`."
+            echo "Built from commit \`${{ github.sha }}\`."
             echo ""
             echo "For detailed build information and installation instructions, please refer to the [README](../../)."
-
           } > release-notes.md
 
           cat release-notes.md
 
-      - name: Create or update GitHub Release
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
           name: ${{ env.TAG }}
           body_path: release-notes.md
-          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
           target_commitish: ${{ github.sha }}
           files: dist/*
           fail_on_unmatched_files: false
