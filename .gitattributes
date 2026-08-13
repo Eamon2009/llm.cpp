@@ -1,2 +1,2 @@
 **/Dockerfile linguist-vendored
-**/data linguist-vendored
+data/** linguist-vendored
