@@ -101,35 +101,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  macos-x64-cpu:
-    name: macOS Intel (x64)
-    needs: release-metadata
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          clang++ -std=c++17 -O3 -DNDEBUG -arch x86_64 -I. -Iinclude -o llm main.cpp
-          file llm
-      - name: Pack artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          package="llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu"
-          mkdir -p "${ARTIFACT_ROOT}/${package}"
-          cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
-          tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-macos-x64-cpu
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-x64-cpu.tar.gz
-          if-no-files-found: error
-          retention-days: 30
-
   ios-xcframework:
     name: iOS XCFramework
     needs: release-metadata
@@ -357,9 +328,6 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.36
         with:
           cuda: "12.4.0"
-          method: network
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "thrust" ]'
-          non-cuda-sub-packages: '[]'
       - name: Build
         shell: bash
         run: |
@@ -407,9 +375,6 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.36
         with:
           cuda: "13.3.0"
-          method: network
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "thrust" ]'
-          non-cuda-sub-packages: '[]'
       - name: Build
         shell: bash
         run: |
@@ -780,7 +745,18 @@ jobs:
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. /I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\include" main.cpp /Fe:llm.exe /link "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\lib\x64\cudart.lib"
+          if exist "llm.cu" (
+            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -o llm.exe llm.cu
+          ) else (
+            if defined CUDA_PATH (
+              set CUDA_INC=/I"%CUDA_PATH%\include"
+              set CUDA_LIB="%CUDA_PATH%\lib\x64\cudart.lib"
+            ) else (
+              set CUDA_INC=/I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\include"
+              set CUDA_LIB="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\lib\x64\cudart.lib"
+            )
+            cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. %CUDA_INC% main.cpp /Fe:llm.exe /link %CUDA_LIB%
+          )
       - name: Pack artifacts
         shell: pwsh
         run: |
@@ -788,7 +764,7 @@ jobs:
           New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
           Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
           Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          $cudaBin = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin"
+          $cudaBin = if ($env:CUDA_PATH) { "$env:CUDA_PATH\bin" } else { "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin" }
           if (Test-Path $cudaBin) {
             Copy-Item "$cudaBin\cudart64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
             Copy-Item "$cudaBin\cublas64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
@@ -813,13 +789,16 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.36
         with:
           cuda: "13.3.0"
-          method: local
           log-file-suffix: "windows-cuda13.txt"
       - name: Build
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. /I"%CUDA_PATH%\include" main.cpp /Fe:llm.exe /link "%CUDA_PATH%\lib\x64\cudart.lib"
+          if exist "llm.cu" (
+            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -o llm.exe llm.cu
+          ) else (
+            cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. /I"%CUDA_PATH%\include" main.cpp /Fe:llm.exe /link "%CUDA_PATH%\lib\x64\cudart.lib"
+          )
       - name: Pack artifacts
         shell: pwsh
         run: |
@@ -978,7 +957,6 @@ jobs:
       - release-metadata
       - macos-arm64-cpu
       - macos-arm64-metal
-      - macos-x64-cpu
       - ios-xcframework
       - ubuntu-x64-cpu
       - ubuntu-arm64-cpu
@@ -1018,7 +996,6 @@ jobs:
         env:
           RES_MACOS_ARM_CPU: ${{ needs.macos-arm64-cpu.result }}
           RES_MACOS_ARM_METAL: ${{ needs.macos-arm64-metal.result }}
-          RES_MACOS_X64: ${{ needs.macos-x64-cpu.result }}
           RES_IOS: ${{ needs.ios-xcframework.result }}
           RES_UBUNTU_X64_CPU: ${{ needs.ubuntu-x64-cpu.result }}
           RES_UBUNTU_ARM_CPU: ${{ needs.ubuntu-arm64-cpu.result }}
@@ -1058,9 +1035,9 @@ jobs:
             local artifact_key="$3"
             if [ "$result" == "success" ] && has_artifact "$artifact_key"; then
               F=$(get_filename "$artifact_key")
-              echo "- ${label} — [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
+              echo "- ${label} - [${F}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${F})"
             else
-              echo "- ${label} — DISABLED"
+              echo "- ${label} - DISABLED"
             fi
           }
 
@@ -1073,7 +1050,6 @@ jobs:
             echo ""
             print_item "$RES_MACOS_ARM_CPU" "macOS Apple Silicon (arm64)" "macos-arm64-cpu"
             print_item "$RES_MACOS_ARM_METAL" "macOS Apple Silicon (arm64, Metal enabled)" "macos-arm64-metal"
-            print_item "$RES_MACOS_X64" "macOS Intel (x64)" "macos-x64"
             print_item "$RES_IOS" "iOS XCFramework" "ios-xcframework"
             echo ""
             echo "**Linux:**"
