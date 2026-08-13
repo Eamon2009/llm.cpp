@@ -81,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f "llm.mm" ]; then
-            clang++ -std=c++17 -O3 -DNDEBUG -arch arm64 -DENABLE_METAL -I. -Iinclude main.cpp llm.mm -framework Foundation -framework Metal -framework MetalPerformanceShaders -o llm
+            clang++ -std=c++17 -O3 -DNDEBUG -arch arm64 -DENABLE_METAL -I. -Iinclude llm.mm -framework Foundation -framework Metal -framework MetalPerformanceShaders -o llm
           else
             clang++ -std=c++17 -O3 -DNDEBUG -arch arm64 -DENABLE_METAL -I. -Iinclude -o llm main.cpp
           fi
