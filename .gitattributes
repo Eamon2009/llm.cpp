@@ -1,2 +1,2 @@
+data/**/*.py linguist-vendored
 **/Dockerfile linguist-vendored
-data/** linguist-vendored
