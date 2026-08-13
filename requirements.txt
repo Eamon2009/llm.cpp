@@ -1,4 +1,0 @@
-tiktoken
-datasets 
-torch
-lmgnu
