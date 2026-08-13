@@ -332,10 +332,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export LIBRARY_PATH="$CUDA_PATH/lib64${LIBRARY_PATH:+:$LIBRARY_PATH}"
           if [ -f "llm.cu" ]; then
             nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -lcublas -o llm llm.cu
           else
-            g++ -std=c++17 -O3 -DNDEBUG -DENABLE_CUDA -I. -Iinclude -o llm main.cpp -lcudart -lcublas
+            g++ -std=c++17 -O3 -DNDEBUG -DENABLE_CUDA -I. -Iinclude -L"$CUDA_PATH/lib64" -o llm main.cpp -lcudart -lcublas
           fi
           file llm
       - name: Smoke test
@@ -379,10 +380,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export LIBRARY_PATH="$CUDA_PATH/lib64${LIBRARY_PATH:+:$LIBRARY_PATH}"
           if [ -f "llm.cu" ]; then
             nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -lcublas -o llm llm.cu
           else
-            g++ -std=c++17 -O3 -DNDEBUG -DENABLE_CUDA -I. -Iinclude -o llm main.cpp -lcudart -lcublas
+            g++ -std=c++17 -O3 -DNDEBUG -DENABLE_CUDA -I. -Iinclude -L"$CUDA_PATH/lib64" -o llm main.cpp -lcudart -lcublas
           fi
           file llm
       - name: Smoke test
@@ -828,9 +830,14 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install Vulkan SDK
-        uses: johnadali/vulkan-sdk-setup-action@v1
-        with:
-          version: 1.3.290.0
+        shell: pwsh
+        run: |
+          $vulkanUrl = "https://sdk.lunarg.com/sdk/download/1.3.290.0/windows/VulkanSDK-1.3.290.0-Installer.exe"
+          Invoke-WebRequest -Uri $vulkanUrl -OutFile "VulkanSDK.exe"
+          Start-Process -FilePath "VulkanSDK.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+          $sdkPath = "C:\VulkanSDK\1.3.290.0"
+          echo "VULKAN_SDK=$sdkPath" >> $env:GITHUB_ENV
+          echo "VK_SDK_PATH=$sdkPath" >> $env:GITHUB_ENV
       - name: Build
         shell: cmd
         run: |
@@ -863,11 +870,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Install OpenCL SDK
+        shell: pwsh
+        run: |
+          $openclHeaders = "https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/heads/main.zip"
+          Invoke-WebRequest -Uri $openclHeaders -OutFile "opencl-headers.zip"
+          Expand-Archive -Path "opencl-headers.zip" -DestinationPath "." -Force
+          $openclLoader = "https://github.com/KhronosGroup/OpenCL-ICD-Loader/releases/download/v2024.05.08/OpenCL-ICD-Loader-v2024.05.08-x64.zip"
+          Invoke-WebRequest -Uri $openclLoader -OutFile "opencl-loader.zip"
+          Expand-Archive -Path "opencl-loader.zip" -DestinationPath "opencl-loader" -Force
+          echo "OPENCL_INCLUDE=$PWD\OpenCL-Headers-main" >> $env:GITHUB_ENV
+          echo "OPENCL_LIB=$PWD\opencl-loader" >> $env:GITHUB_ENV
       - name: Build
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_OPENCL /EHsc /Iinclude /I. main.cpp /Fe:llm.exe /link OpenCL.lib
+          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_OPENCL /EHsc /Iinclude /I. /I"%OPENCL_INCLUDE%" main.cpp /Fe:llm.exe /link "%OPENCL_LIB%\OpenCL.lib"
       - name: Pack artifacts
         shell: pwsh
         run: |
@@ -875,6 +893,7 @@ jobs:
           New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
           Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
           Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
+          Copy-Item "$env:OPENCL_LIB\OpenCL.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
           Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
       - uses: actions/upload-artifact@v4
         with:
