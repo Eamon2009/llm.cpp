@@ -87,7 +87,7 @@ What's in the box:
 - Feed-forward MLP (ReLU)
 - LayerNorm
 - Cross-entropy loss
-- **Fully analytical backward pass** — every gradient written by hand in `include/backward.h`
+- **Fully analytical backward pass** in `include/backward.h`
 - AdamW optimizer (first/second moment estimates)
 - Checkpoint save/load
 - Autoregressive generation and terminal chat mode
@@ -110,7 +110,7 @@ No autograd. No `.backward()` magic. Just C++ loops that do exactly what the mat
 
 `Grads` holds accumulators for every parameter (`GradLinear`, `GradEmbedding`, `GradLayerNorm`, etc.). Every gradient is accumulated, not overwritten, so gradient accumulation across mini-batches works.
 
-`AdamWState` tracks `m` and `v` for every parameter. `apply_grads()` does bias-corrected moments, then `param -= lr * m_hat / (sqrt(v_hat) + eps)`. Note: no weight decay in this version — it's vanilla Adam.
+`AdamWState` tracks `m` and `v` for every parameter. `apply_grads()` does bias-corrected moments, then `param -= lr * m_hat / (sqrt(v_hat) + eps)`. Note: no weight decay in this version - it's vanilla Adam.
 
 ---
 
@@ -137,7 +137,7 @@ Pre-tokenize into binary shards. Each shard is a flat stream of `uint16_t` token
 
 `ShardedSplit` builds a prefix-sum index over token counts, so `token_at(global_idx)` is O(1) pointer arithmetic.
 
-`get_batch()` samples random starting positions and extracts `block_size` consecutive tokens. OpenMP parallelizes across the batch dimension — each thread gets its own RNG seed for determinism.
+`get_batch()` samples random starting positions and extracts `block_size` consecutive tokens. OpenMP parallelizes across the batch dimension - each thread gets its own RNG seed for determinism.
 
 ---
 
@@ -145,7 +145,7 @@ Pre-tokenize into binary shards. Each shard is a flat stream of `uint16_t` token
 
 The custom C++ backend is transparent but slow. A CPU does scalar matrix multiplication at roughly 1–10 GFLOP/s. An RTX 4090 does ~80 TFLOP/s. That's an 8,000–80,000× gap.
 
-The `engine/` folder contains a LibTorch port that replaces the custom backend with PyTorch's C++ API, gaining cuBLAS-accelerated matmuls. The transformer architecture is unchanged — only the compute layer is swapped. A single line moves the model to GPU:
+The `engine/` folder contains a LibTorch port that replaces the custom backend with PyTorch's C++ API, gaining cuBLAS-accelerated matmuls. The transformer architecture is unchanged - only the compute layer is swapped. A single line moves the model to GPU:
 
 ```cpp
 model->to(torch::kCUDA);
@@ -237,7 +237,7 @@ GPU (LibTorch, bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-d
 
 - Vaswani et al., "Attention Is All You Need", 2017
 - Radford et al., "Language Models are Unsupervised Multitask Learners" (GPT-2), 2019
-- Karpathy, A., *Let's reproduce GPT-2 (124M)*, 2024 — concepts regarding multi-head attention structure, learning rate schedule, and binary token shard loading were implemented using his walkthrough.
+- Karpathy, A., *Let's reproduce GPT-2 (124M)*, 2024 - concepts regarding multi-head attention structure, learning rate schedule, and binary token shard loading were implemented using his walkthrough.
 
 ## License
 
