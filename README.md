@@ -20,6 +20,8 @@ python data_set.py
 g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
 ./llm.exe data/input.txt
 ```
+Just a single training loop packed into a binary that runs on Linux, macOS and Windows.
+RAM is measured with get_ram_usage_mb(). On Linux it reads VmRSS from /proc/self/status. On macOS it calls task_info for resident_size. On Windows it pulls WorkingSetSize from K32GetProcessMemoryInfo. The number is printed after every training step, right next to the loss and tokens-per-second. So if you are training on a laptop with 16 GB of RAM and the printed value is climbing past 12 GB, you know immediately there is no guessing about framework overhead or memory fragmentation. You can watch the resident set size jump when the model initializes, hold steady through the forward and backward passes, and tick up during the periodic validation run when a second forward graph is alive. If the number is too high, you reduce BATCH_SIZE or N_LAYER in config.h and recompile. The memory footprint is predictable because every byte is accounted for in the code.
 
 You should see something like:
 
