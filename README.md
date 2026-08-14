@@ -2,7 +2,7 @@
 
 LLM training in C++17 with no frameworks on the CPU path. The core is ~1,000 lines of dependency-free C++: `main.cpp`, `config/config.h`, and `include/*.h`. Manual backprop, hand-rolled AdamW, custom BPE tokenizer. If you want to understand what `loss.backward()` actually does without PyTorch hiding the details, this is the place.
 
-There's also a GPU path via LibTorch in `engine/`, and Apple Silicon Metal support via `llm.mm`, but those pull in external dependencies. The zero-dep CPU build is the reference implementation.
+There's also a GPU varient via CUDA in `llmcpp/`, and Apple Silicon Metal support via `llm.mm`, but CUDA pull in external dependencies. The zero-dep CPU build is the reference implementation.
 
 ## quick start (CPU)
 
@@ -145,19 +145,18 @@ Pre-tokenize into binary shards. Each shard is a flat stream of `uint16_t` token
 
 The custom C++ backend is transparent but slow. A CPU does scalar matrix multiplication at roughly 1–10 GFLOP/s. An RTX 4090 does ~80 TFLOP/s. That's an 8,000–80,000× gap.
 
-The `engine/` folder contains a LibTorch port that replaces the custom backend with PyTorch's C++ API, gaining cuBLAS-accelerated matmuls. The transformer architecture is unchanged - only the compute layer is swapped. A single line moves the model to GPU:
-
+Because this is a native CUDA port, everything is built for the GPU from the ground up. You don't need to push the model to the graphics card—just initialize GPTLanguageModel, and the memory is automatically allocated in VRAM.
 ```cpp
-model->to(torch::kCUDA);
+GPTLanguageModel model(dl.vocab_size, N_EMBD, N_HEAD, N_LAYER, BLOCK_SIZE, SEED);
 ```
 
-There's also a CUDA path (`engine/llm.cpp/llm.cu`) and Apple Silicon Metal (`llm.mm`, `engine/llm.cpp/train.mm`). These are experimental and pull in external dependencies. The `g++` build path is the only truly zero-dependency one.
+There's also a Apple Silicon Metal (`llm.mm`) These are experimental and pull in external dependencies. The `g++` build path is the only truly zero-dependency one.
 
 ---
 
 ## Benchmarks
 
-These are small character-level models on TinyStories unless noted. Don't expect GPT-2 quality — the point is to see the pipeline work end-to-end.
+These are small character-level models on TinyStories unless noted. Don't expect GPT-2 quality - the point is to see the pipeline work end-to-end.
 
 | Params | Layers | Dim | Heads | Ctx | Vocab | Iters | Val Loss | Time | Hardware |
 |--------|--------|-----|-------|-----|-------|-------|----------|------|----------|
@@ -165,7 +164,7 @@ These are small character-level models on TinyStories unless noted. Don't expect
 | 2.00M | 4 | 200 | 4 | 200 | 110 char | 5,000 | 0.9301 | — | — |
 | 19.17M | 4 | 200 | 4 | 200 | ~50K BPE | 5,000 | — | — | — |
 
-GPU (LibTorch, bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-dep path.
+GPU (CUDA , bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-dep path.
 
 ---
 
@@ -225,11 +224,11 @@ GPU (LibTorch, bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-d
 
 ## What This Is and Isn't
 
-**This is:** A readable C++ reference for how transformer training works under the hood. If you've read Karpathy's *llm.c* and want the same concepts in C++ with a hand-written backward pass, this is it.
+**This is:** A readable C++ reference for how transformer training works under the hood. If you've read Karpathy's *llm.c* and want the same concepts in C++ with a backward pass, this is it.
 
 **This isn't:** A production training framework. Models are tiny (sub-20M parameters), there's no distributed training, no gradient checkpointing, no model parallelism, no quantization. If you want to train something useful, use llm.c, nanoGPT, or a real framework.
 
-**The PyTorch situation:** The README says "no PyTorch, no Python, no dependencies whatsoever." That's true for the `g++` build path only. The repo also contains `engine/llm.pt`, `torch_bridge.h`, `requirements.txt`, and a LibTorch GPU path. The core C++ backend is dependency-free. The GPU backend is not.
+**The PyTorch situation:** The README says "no PyTorch, no Python, no dependencies whatsoever." That's true for the `g++` build path only . The core C++ backend is dependency-free. The GPU backend is not.
 
 ---
 
