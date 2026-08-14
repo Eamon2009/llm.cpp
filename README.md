@@ -4,8 +4,6 @@ LLM training in C++17 with no frameworks on the CPU path. The core is ~1,000 lin
 
 This is not a framework. It is a reference implementation. The kind of thing you build once to prove to yourself that you understand every operation from the matrix multiplications up to the cross-entropy loss, and then you keep around because it turns out to be genuinely useful for training small models on your laptop CPU without fighting a Python environment.
 
-The model achieves a validation loss of 1.6371 nats after 76 minutes of CPU training on 31.4 million characters, demonstrating that language modeling at this scale is highly tractable on commodity hardware without external dependencies. On a GPU (CUDA/bfloat16), a validation loss of 2.3918 is reached in under 83 minutes, achieving a peak throughput of 19.6k tokens per second.
-
 There's also a GPU varient via CUDA in `llmcpp/`, and Apple Silicon Metal support via `llm.mm`, but CUDA pull in external dependencies. The zero-dep CPU build is the reference implementation.
 
 ## quick start (CPU)
@@ -175,56 +173,68 @@ GPU (CUDA , bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-dep 
 
 ---
 
-## File Layout
+## Layout
 
 ```
 
-|-─ .ci/                        # CI/CD pipelines and Docker configurations
-├── .github/                    # GitHub Actions workflows and issue templates
-├── assets/                     # Project images, banners, and hardware diagrams
-├── benches/
-│   └── bench.cpp               # C++ benchmarking script for performance testing
-├── config/
-│   └── config.h                # Global configuration parameters
-├── data/
-│   ├── dataset.py              # Data loading and preprocessing pipeline
-├── docs/                       # Additional documentation and generated reports
-├── engine/                     # Core backend implementation
-│   └── llm.cpp/                # Low-level C++/CUDA/Metal engine
-│       ├── CMakeLists.txt      # Engine-specific build configuration
-│       ├── llm.cu              # CUDA implementation for Nvidia GPUs
-│       ├── make                # Engine Makefile compilation script
-│       ├── train.mm            # Objective-C++ Metal script for Apple Silicon training
-│       ├── config/
-│       │   └── config.h        # Engine-specific configuration header
-│       └── include/            # Neural network mathematical headers
-│           ├── attention.h     # Self-attention module definitions
-│           ├── cuda_kernels.cuh # Custom CUDA kernel definitions
-│           ├── layer.cuh       # Layer abstractions for GPU
-│           ├── tensor.cuh      # Core tensor math operations
-│           └── ...             # (Other low-level neural net headers)
-├── include/                    # High-level C++ API headers
-│   ├── attention.h             # High-level attention interfaces
-│   ├── gpt.h                   # GPT model architecture definitions
-│   ├── llm-cpp.hpp             # Main library interface for external use
-│   ├── tokenizer.h             # Text tokenization logic
-│   ├── torch_bridge.h
-     └── ...                   # Interoperability layer for PyTorch tensors
-├── scripts/
-│   └── build.sh                # Automation script for building the project
-├── train_test/                 # Experimental and testing scripts
-│   ├── model.py                # Python model architecture definitions
-│   ├── test.c                  # C-based functional testing
-│   └── train2.mm               # Experimental Metal training iterations
-├── .clang-format               # Code style rules for C/C++ files
-├── .clang-tidy                 # Linter configuration for C/C++ static analysis
-├── benchmark.cpp               # Entry point for running system benchmarks
-├── CMakeLists.txt              # Root CMake build configuration
-├── llm.mm                      # Apple Silicon (Metal) main inference entry point
-├── main.cpp                    # Main application C++ entry point
-├── README.md                   # Main project documentation
-├── requirements.txt            # Python dependencies for the project
-└── shards.cpp                  # C++ implementation for handling data shards
+.
+├── .dockerignore           # Docker configuration to exclude files from image builds
+├── .gitattributes          # Git configuration for specific file handling
+├── .gitignore              # Git configuration to ignore tracked files
+├── CMakeLists.txt          # Main CMake build configuration for the project
+├── Dockerfile              # Docker container definitions for isolated environments
+├── LICENSE                 # Project open-source license
+├── llm.mm                  # Objective-C++ implementation (likely for Apple Metal/Mac support)
+├── main.cpp                # Main C++ application entry point
+├── README.md               # Project documentation
+├── config/                 # Global configuration directory
+│   └── config.h            # Header defining hyperparameters and global model settings
+├── data/                   # Data processing and export scripts
+│   ├── data_set.py         # Python script for managing specific dataset formats
+│   ├── dataset.py          # Python script for loading and processing training data
+│   └── export.py           # Python script to export PyTorch weights to a C++ binary format
+├── include/                # Core CPU/C++ header files for model architecture
+│   ├── attention.h         # Self-attention mechanism definitions
+│   ├── backward.h          # Backward pass (backpropagation) logic
+│   ├── block.h             # Transformer block definitions
+│   ├── embedding.h         # Token and positional embedding definitions
+│   ├── feedforward.h       # Feedforward neural network definitions
+│   ├── gpt.h               # Core GPT model structure and assembly
+│   ├── layernorm.h         # Layer normalization definitions
+│   ├── linear.h            # Linear (dense) layer definitions
+│   ├── llm-cpp.hpp         # Primary library interface header
+│   ├── lm.h                # Language Modeling head definitions
+│   ├── sampler.h           # Token sampling logic (temperature, top-k, top-p)
+│   ├── tensor.h            # Custom CPU tensor data structure
+│   ├── tokenizer.h         # Text tokenizer interface
+│   └── torch_bridge.h      # Utilities to interface and bridge with PyTorch tensors
+├── llmcpp/                 # CUDA/GPU-accelerated implementation directory
+│   ├── best_model.bin      # Exported binary weights of the trained model
+│   ├── CMakeLists.txt      # CMake configuration specifically for the CUDA module
+│   ├── llm.cu              # Main CUDA implementation file for the model
+│   ├── train_model_fp32.cu # CUDA script for training the model in FP32 precision
+│   ├── config/             # CUDA-specific configuration
+│   │   └── config.h        # GPU hyperparameters, thread counts, and block size settings
+│   └── include/            # C++ and CUDA headers (.cuh) for GPU operations
+│       ├── attention.hpp   # GPU self-attention definitions
+│       ├── backward.h      # GPU backward pass definitions
+│       ├── block.h         # GPU transformer block definitions
+│       ├── bpe.h           # Byte-Pair Encoding tokenizer definitions
+│       ├── char_level.h    # Character-level tokenizer definitions
+│       ├── cuda_kernels.cuh # Custom CUDA kernel declarations
+│       ├── cuda_utils.cuh  # Utility functions for CUDA (memory management, error checking)
+│       ├── embedding.h     # GPU embedding layer definitions
+│       ├── feedforward.h   # GPU feedforward layer definitions
+│       ├── flash_attention.cuh # Optimized FlashAttention CUDA kernels
+│       ├── layer.cuh       # Base layer class for CUDA modules
+│       ├── layernorm.h     # GPU layer normalization definitions
+│       ├── linear.h        # GPU linear layer definitions
+│       ├── lm.h            # GPU Language Modeling head definitions
+│       ├── model.h         # Complete GPU model assembly definitions
+│       ├── sampler.h       # GPU-accelerated sampling logic
+│       └── tensor.cuh      # GPU tensor data structure definitions
+└── scripts/                # Utility shell scripts
+    └── build.sh            # Shell script to compile the project via CMake/Make
 ```
 
 ---
