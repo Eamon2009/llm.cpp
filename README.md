@@ -1,15 +1,15 @@
 # llm.cpp
 
-LLM training in C++17 with no frameworks on the CPU path. The core is ~1,000 lines of dependency-free C++: `main.cpp`, `config/config.h`, and `include/*.h`. Manual backprop, hand-rolled AdamW, custom BPE tokenizer. If you want to understand what `loss.backward()` actually does without PyTorch hiding the details, this is the place. Thia eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only ***GPT architecture*** featuring custom tensors, embeddings, multi-head causal self-attention,layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer - all contained within [main.cpp](main.cpp) ,[llm.mm](llm.mm) and the [include/](include) directory also a ***token level [BPE]*** [tokenizer.h](include/tokenizer.h) implementation inside [include](include). With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
+LLM training in C++17 with no frameworks on the CPU path. The core is ~1,000 lines of dependency-free C++: `main.cpp`, `config/config.h`, and `include/*.h`. If you want to understand what `loss.backward()` actually does without PyTorch hiding the details, this is the place. Thia eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only **GPT architecture** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer all contained within [`main.cpp`](main.cpp), [`llm.mm`](llm.mm), and the [`include/`](include) directory. There is also a **token-level BPE** [`tokenizer.h`](include/tokenizer.h) implementation inside [`include`](include). With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
 
 This is not a framework. It is a reference implementation. The kind of thing you build once to prove to yourself that you understand every operation from the matrix multiplications up to the cross-entropy loss, and then you keep around because it turns out to be genuinely useful for training small models on your laptop CPU without fighting a Python environment.
 
 There's also a GPU varient via CUDA in `llmcpp/`, and Apple Silicon Metal support via `llm.mm`, but CUDA pull in external dependencies. The zero-dep CPU build is the reference implementation.
 
 ## quick start (CPU)
-The idea is simple: take a text file, tokenize it, and train a transformer to predict the next token. The code is organized the way you would actually think about the problem. There is a `GPTLanguageModel` class that holds the parameters, a forward pass that computes logits and loss, a backward pass that walks the computation graph in reverse, and an `AdamW optimizer` that updates the weights. Everything is explicit. If you want to know how gradient accumulation works, or how the causal mask is applied, or how the repetition penalty modifies the logits during sampling, you read the code and it is right there.
+The idea is simple: take a text file, tokenize it, and train a transformer to predict the next token. The code is organized the way you would actually think about the problem. There is a `GPTLanguageModel` class that holds the parameters, a forward pass that computes logits and loss, a backward pass that walks the computation graph in reverse, and an `AdamW` optimizer that updates the weights. Everything is explicit. If you want to know how gradient accumulation works, or how the causal mask is applied, or how the repetition penalty modifies the logits during sampling, you read the code and it is right there.
 
-You can train a model from scratch, which will save the best checkpoint based on validation loss. You can load that checkpoint and generate text indefinitely. Or you can start an interactive chat session, where a system prompt is prepended to every turn and the model streams tokens back to you in real time. The architecture is fully configurable via a single header file-embedding dimension, number of layers, attention heads, context length, learning rate schedule, all of it.
+You can train a model from scratch, which will save the best checkpoint based on validation loss. You can load that checkpoint and generate text indefinitely. Or you can start an interactive chat session, where a system prompt is prepended to every turn and the model streams tokens back to you in real time. The architecture is fully configurable via a single header file—embedding dimension, number of layers, attention heads, context length, learning rate schedule, all of it.
 
 The "I don't even want to install CMake" section.
 
@@ -244,8 +244,6 @@ GPU (CUDA , bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-dep 
 **This is:** A readable C++ reference for how transformer training works under the hood. If you've read Karpathy's *llm.c* and want the same concepts in C++ with a backward pass, this is it.
 
 **This isn't:** A production training framework. Models are tiny (sub-20M parameters), there's no distributed training, no gradient checkpointing, no model parallelism, no quantization. If you want to train something useful, use llm.c, nanoGPT, or a real framework.
-
-**The PyTorch situation:** The README says "no PyTorch, no Python, no dependencies whatsoever." That's true for the `g++` build path only . The core C++ backend is dependency-free. The GPU backend is not.
 
 ---
 
