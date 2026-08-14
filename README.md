@@ -9,7 +9,7 @@ There's also a GPU varient via CUDA in `llmcpp/`, and Apple Silicon Metal suppor
 ## quick start (CPU)
 The idea is simple: take a text file, tokenize it, and train a transformer to predict the next token. The code is organized the way you would actually think about the problem. There is a `GPTLanguageModel` class that holds the parameters, a forward pass that computes logits and loss, a backward pass that walks the computation graph in reverse, and an `AdamW` optimizer that updates the weights. Everything is explicit. If you want to know how gradient accumulation works, or how the causal mask is applied, or how the repetition penalty modifies the logits during sampling, you read the code and it is right there.
 
-You can train a model from scratch, which will save the best checkpoint based on validation loss. You can load that checkpoint and generate text indefinitely. Or you can start an interactive chat session, where a system prompt is prepended to every turn and the model streams tokens back to you in real time. The architecture is fully configurable via a single header file—embedding dimension, number of layers, attention heads, context length, learning rate schedule, all of it.
+You can train a model from scratch, which will save the best checkpoint based on validation loss. You can load that checkpoint and generate text indefinitely. Or you can start an interactive chat session, where a system prompt is prepended to every turn and the model streams tokens back to you in real time. The architecture is fully configurable via a single header file embedding dimension, number of layers, attention heads, context length, learning rate schedule, all of it.
 
 The "I don't even want to install CMake" section.
 
@@ -258,7 +258,7 @@ GPU (CUDA , bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-dep 
 │       ├── cuda_utils.cuh  # Utility functions for CUDA (memory management, error checking)
 │       ├── embedding.h     # GPU embedding layer definitions
 │       ├── feedforward.h   # GPU feedforward layer definitions
-│       ├── flash_attention.cuh # Optimized FlashAttention CUDA kernels
+│       ├── flash_atte..cuh # Optimized FlashAttention CUDA kernels
 │       ├── layer.cuh       # Base layer class for CUDA modules
 │       ├── layernorm.h     # GPU layer normalization definitions
 │       ├── linear.h        # GPU linear layer definitions
@@ -281,10 +281,10 @@ GPU (CUDA , bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-dep 
 ---
 
 ## References
-
-- Vaswani et al., "Attention Is All You Need", 2017
-- Radford et al., "Language Models are Unsupervised Multitask Learners" (GPT-2), 2019
-- Karpathy, A., *Let's reproduce GPT-2 (124M)*, 2024 - concepts regarding multi-head attention structure, learning rate schedule, and binary token shard loading were implemented using his walkthrough.
+- [Vaswani et al., "Attention Is All You Need", 2017](https://arxiv.org/abs/1706.03762)
+- [Radford et al., "Language Models are Unsupervised Multitask Learners" (GPT-2), 2019](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
+- [Karpathy, A., **llm.c** Repository](https://github.com/karpathy/llm.c) - LLM training in simple, raw C/CUDA.
+- [Karpathy, A., ***Let's reproduce GPT-2 (124M)***, 2024](https://youtu.be/l8pRSuU81PU)- concepts regarding multi-head attention structure, learning rate schedule, and binary token shard loading were implemented using his walkthrough (see the [build-nanogpt README.md](https://github.com/karpathy/build-nanogpt/blob/master/README.md)).
 
 ## License
 
