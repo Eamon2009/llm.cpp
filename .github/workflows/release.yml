@@ -911,7 +911,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+        uses: mymindstorm/setup-emsdk@v16
         with:
           version: 3.1.64
           actions-cache-folder: emsdk-cache
@@ -945,7 +945,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+        uses: mymindstorm/setup-emsdk@v16
         with:
           version: 3.1.64
           actions-cache-folder: emsdk-cache
