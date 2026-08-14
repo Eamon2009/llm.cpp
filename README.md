@@ -61,7 +61,8 @@ step3/20000(0.01%)|trainloss7.658248 |val loss7.663259|lr 9.00e-07|994.39 ms|193
 step4/20000(0.02%)|trainloss7.643033 |val loss7.663259|lr 1.20e-06|1025.49 ms|187 tok/s|ram 70.9 MB
 step5/20000(0.03%)|trainloss7.623671 |val loss7.663259|lr 1.50e-06|1013.43 ms|189 tok/s|ram 71.0 MB
 [SAVE]  Weights written to best_model.bin
-step 6/20000(0.03%)|train loss 7.665278|val loss 7.654684*|lr 1.80e-06 |1042.40 ms |184 tok/s|ram 71.0 MB  best
+step 6/20000(0.03%)|train loss 7.665278|valloss7.654684*|lr .80e-06|1042.40 ms|184 tok/s|ram71.0 MB
+best
 generating:
 What sall I hae a sight of the king's crow�
 
