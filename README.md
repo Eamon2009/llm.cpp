@@ -26,7 +26,7 @@ RAM is measured with get_ram_usage_mb(). On Linux it reads VmRSS from /proc/self
 
 You should see something like:
 
-```
+```text
 [DATA]  Total tokens : 3521179
 [DATA]  Train tokens : 3169061
 [DATA]  Val tokens   : 352118
