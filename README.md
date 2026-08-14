@@ -21,29 +21,59 @@ g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
 ./llm.exe data/input.txt
 ```
 Just a single training loop packed into a binary that runs on Linux, macOS and Windows.
-RAM is measured with get_ram_usage_mb(). On Linux it reads VmRSS from /proc/self/status. On macOS it calls task_info for resident_size. On Windows it pulls WorkingSetSize from K32GetProcessMemoryInfo. The number is printed after every training step, right next to the loss and tokens-per-second. So if you are training on a laptop with 16 GB of RAM and the printed value is climbing past 12 GB, you know immediately there is no guessing about framework overhead or memory fragmentation. You can watch the resident set size jump when the model initializes, hold steady through the forward and backward passes, and tick up during the periodic validation run when a second forward graph is alive. If the number is too high, you reduce BATCH_SIZE or N_LAYER in config.h and recompile. The memory footprint is predictable because every byte is accounted for in the code.
+
+RAM is measured with get_ram_usage_mb(). On Linux it reads VmRSS from /proc/self/status. On macOS it calls task_info for resident_size. On Windows it pulls WorkingSetSize from K32GetProcessMemoryInfo. The number is printed after every training step, right next to the loss and tokens-per-second. So if you are training on a laptop with 16 GB of RAM and the printed value is climbing past 12 GB, you know immediately there is no guessing about framework overhead or memory fragmentation.You can watch the resident set size jump when the model initializes, hold steady through the forward and backward passes, and tick up during the periodic validation run when a second forward graph is alive. If the number is too high, you reduce BATCH_SIZE or N_LAYER in config.h and recompile. The memory footprint is predictable because every byte is accounted for in the code.
 
 You should see something like:
 
 ```
+[DATA]  Total tokens : 3521179
+[DATA]  Train tokens : 3169061
+[DATA]  Val tokens   : 352118
+
+██╗     ██╗     ███╗   ███╗        ██████╗ ██████╗ ██████╗
+██║     ██║     ████╗ ████║       ██╔════╝ ██╔══██╗██╔══██╗
+██║     ██║     ██╔████╔██║ █████╗██║      ██████╔╝██████╔╝
+██║     ██║     ██║╚██╔╝██║ ╚════╝██║      ██╔═══╝ ██╔═══╝
+███████╗███████╗██║ ╚═╝ ██║ █████╗╚██████╗ ██║     ██║
+╚══════╝╚══════╝╚═╝     ╚═╝ ╚════╝ ╚═════╝ ╚═╝     ╚═╝
+
+
   +------------------------------------------+------------------------------------------+
   | LLM Architecture                                                                    |
   +------------------------------------------+------------------------------------------+
-  | Max Context Length   : 64                | Vocab Size (BPE)     : 2056              |
-  | Number of Layers     : 4                 | Attention Heads      : 2                 |
-  | Embedding Channels   : 128               | Total Parameters     : 1328392           |
-  | Repetition Penalty   : 10                | Repetition Window    : 10                |
+  | Max Context Length   : 24                | Vocab Size (BPE)     : 2056              |
+  | Number of Layers     : 6                 | Attention Heads      : 6                 |
+  | Embedding Channels   : 128               | Total Parameters     : 1712904           |
+  | Repetition Penalty   : 500               | Repetition Window    : 500               |
   +------------------------------------------+------------------------------------------+
 
   +-------------------------------------------------------------------------------------+
   | Host Hardware Specs                                                                 |
   +-------------------------------------------------------------------------------------+
-  | Host CPU Device      : AMD Ryzen                                                    |
-  | Host RAM (Total)     : 8045 MB                                                      |
+  | Host CPU Device      : AMD Ryzen 5 PRO 3500U w/ Radeon...                           |
+  | Host RAM (Total)     : 6045 MB                                                      |
   +-------------------------------------------------------------------------------------+
 
-step 1/5000(0.02%) | train loss 7.650238 | val loss 7.652169  | lr 1.00e-06 |  4016.84 ms |  509 tok/s
-step 2/5000(0.04%) | train loss 7.648808 | val loss 7.652169  | lr 2.00e-06 |  4053.90 ms |  505 tok/s
+step1/20000(0.01%)|trainloss7.647731|val loss7.663259|lr 3.00e-07|960.52 ms 199 tok/s|ram 70.9 MB
+step2/20000(0.01%)|trainloss7.637784 |val loss7.663259|lr 6.00e-07|1243.27 ms|154 tok/s|ram 70.9 MB
+step3/20000(0.01%)|trainloss7.658248 |val loss7.663259|lr 9.00e-07|994.39 ms|193 tok/s|ram 70.9 MB
+step4/20000(0.02%)|trainloss7.643033 |val loss7.663259|lr 1.20e-06|1025.49 ms|187 tok/s|ram 70.9 MB
+step5/20000(0.03%)|trainloss7.623671 |val loss7.663259|lr 1.50e-06|1013.43 ms|189 tok/s|ram 71.0 MB
+[SAVE]  Weights written to best_model.bin
+step 6/20000(0.03%)|train loss 7.665278|val loss 7.654684*|lr 1.80e-06 |1042.40 ms |184 tok/s|ram 71.0 MB  best
+generating:
+What sall I hae a sight of the king's crow�
+
+BAPTISTcs
+A good poor man and I will b a man
+dnw..han�€.
+And let him be the king of the world!
+why what a heavy day id?.
+step7/20000(0.03%)|trainloss7.678715|val loss 7.654684|lr 2.10e-06|1014.71 ms|189 tok/s|ram 71.2 MB
+step8/20000(0.04%)|trainloss7.650753|val loss 7.654684|lr 2.40e-06|1025.41 ms|187 tok/s|ram 71.1 MB
+step9/20000(0.04%)|trainloss7.658641|val loss 7.654684|lr 2.70e-06|1058.55 ms|181 tok/s|ram 71.1 MB
+ 
 ```
 
 This trains from scratch on `data/input.txt` and writes the best checkpoint to `best_model.bin`. Once you have a checkpoint:
