@@ -166,8 +166,8 @@ These are small character-level models on TinyStories unless noted. Don't expect
 | Params | Layers | Dim | Heads | Ctx | Vocab | Iters | Val Loss | Time | Hardware |
 |--------|--------|-----|-------|-----|-------|-------|----------|------|----------|
 | 0.83M | 4 | 128 | 4 | 64 | 105 char | 3,000 | 1.6371 | 76m | CPU (AMD Ryzen) |
-| 2.00M | 4 | 200 | 4 | 200 | 110 char | 5,000 | 0.9301 | — | — |
-| 19.17M | 4 | 200 | 4 | 200 | ~50K BPE | 5,000 | — | — | — |
+| 2.00M | 4 | 200 | 4 | 200 | 110 char | 5,000 | 0.9301 | 86m | CPU x64 |
+| 19.17M | 4 | 200 | 4 | 200 | ~50K BPE | 5,000 | 2.3934 | 83m | GPU(bfloat16) |
 
 GPU (CUDA , bfloat16): 2.39 val loss in ~83 min, ~19.6k tok/s. Not the zero-dep path.
 
