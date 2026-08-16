@@ -1,7 +1,6 @@
 /*'''
- * llm.mm - LMGNU Organization (Objective-C++ Version)
  * Copyright (C) 2026 Eamon
- * https://github.com/LMGNU/llm.cpp
+ * https://github.com/Eamon2009/llm.cpp
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
