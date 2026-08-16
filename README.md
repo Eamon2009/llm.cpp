@@ -1,8 +1,6 @@
 # llm.cpp
 
-LLM training in C++17 with no frameworks on the CPU path. The core is ~1,000 lines of dependency-free C++: `main.cpp`, `config/config.h`, and `include/*.h`. If you want to understand what `loss.backward()` actually does without PyTorch hiding the details, this is the place. Thia eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only **GPT architecture** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer all contained within [`main.cpp`](main.cpp), [`llm.mm`](llm.mm), and the [`include/`](include) directory. There is also a **token-level BPE** [`tokenizer.h`](include/tokenizer.h) implementation inside [`include`](include). With no autograd engine or external frameworks, every gradient is explicitly derived and written out.
-
-This is not a framework. It is a reference implementation. The kind of thing you build once to prove to yourself that you understand every operation from the matrix multiplications up to the cross-entropy loss, and then you keep around because it turns out to be genuinely useful for training small models on your laptop CPU without fighting a Python environment.
+LLM training in C++17 with no frameworks on the CPU path. The core is ~1,000 lines of dependency-free C++: `main.cpp`, `config/config.h`, and `include/*.h`. If you want to understand what `loss.backward()` actually does without PyTorch hiding the details, this is the place. Thia eliminating the need for PyTorch or Python to train a transformer locally. The core implementation is a decoder-only **GPT architecture** featuring custom tensors, embeddings, multi-head causal self-attention, layer normalization, cross-entropy loss, and an analytical backward pass with the AdamW optimizer all contained within [`main.cpp`](main.cpp), [`llm.mm`](llm.mm), and the [`include/`](include) directory. There is also a **token-level BPE** [`tokenizer.h`](include/tokenizer.h) implementation inside [`include`](include). With no autograd engine or external frameworks, every gradient is explicitly derived and written out. This is not a framework. It is a reference implementation. The kind of thing you build once to prove to yourself that you understand every operation from the matrix multiplications up to the cross-entropy loss, and then you keep around because it turns out to be genuinely useful for training small models on your laptop CPU without fighting a Python environment.
 
 There's also a GPU varient via CUDA in `llmcpp/`, and Apple Silicon Metal support via `llm.mm`, but CUDA pull in external dependencies. The zero-dep CPU build is the reference implementation.
 
@@ -16,8 +14,11 @@ The "I don't even want to install CMake" section.
 ```bash
 cd data
 python data_set.py
-
+```
+```bash
+# Compile
 g++ -std=c++17 -O3 -march=native -fopenmp -I. -Iinclude -o llm.exe main.cpp
+# run
 ./llm.exe data/input.txt
 ```
 Just a single training loop packed into a binary that runs on Linux, macOS and Windows.
@@ -30,15 +31,6 @@ You should see something like:
 [DATA]  Total tokens : 3521179
 [DATA]  Train tokens : 3169061
 [DATA]  Val tokens   : 352118
-
-██╗     ██╗     ███╗   ███╗        ██████╗ ██████╗ ██████╗
-██║     ██║     ████╗ ████║       ██╔════╝ ██╔══██╗██╔══██╗
-██║     ██║     ██╔████╔██║ █████╗██║      ██████╔╝██████╔╝
-██║     ██║     ██║╚██╔╝██║ ╚════╝██║      ██╔═══╝ ██╔═══╝
-███████╗███████╗██║ ╚═╝ ██║ █████╗╚██████╗ ██║     ██║
-╚══════╝╚══════╝╚═╝     ╚═╝ ╚════╝ ╚═════╝ ╚═╝     ╚═╝
-
-
   +------------------------------------------+------------------------------------------+
   | LLM Architecture                                                                    |
   +------------------------------------------+------------------------------------------+
@@ -183,7 +175,7 @@ Pre-tokenize into binary shards. Each shard is a flat stream of `uint16_t` token
 
 The custom C++ backend is transparent but slow. A CPU does scalar matrix multiplication at roughly 1–10 GFLOP/s. An RTX 4090 does ~80 TFLOP/s. That's an 8,000–80,000× gap.
 
-Because this is a native CUDA port, everything is built for the GPU from the ground up. You don't need to push the model to the graphics card—just initialize GPTLanguageModel, and the memory is automatically allocated in VRAM.
+Because this is a native CUDA port, everything is built for the GPU from the ground up. You don't need to push the model to the graphics card just initialize GPTLanguageModel, and the memory is automatically allocated in VRAM.
 ```cpp
 GPTLanguageModel model(dl.vocab_size, N_EMBD, N_HEAD, N_LAYER, BLOCK_SIZE, SEED);
 ```
