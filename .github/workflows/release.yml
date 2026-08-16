@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       version:
@@ -21,11 +23,18 @@ jobs:
     outputs:
       tag_name: ${{ steps.tag.outputs.tag_name }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - id: tag
         shell: bash
         run: |
           set -euo pipefail
-          raw_tag="${{ inputs.version }}"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            raw_tag="${{ inputs.version }}"
+          else
+            raw_tag="$(echo '${{ github.sha }}' | cut -c1-7)"
+          fi
           if [[ "${raw_tag}" == v* ]]; then
             tag_name="${raw_tag}"
           else
@@ -862,46 +871,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  windows-x64-opencl:
-    name: Windows x64 (OpenCL)
-    needs: release-metadata
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Install OpenCL SDK
-        shell: pwsh
-        run: |
-          $openclHeaders = "https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/heads/main.zip"
-          Invoke-WebRequest -Uri $openclHeaders -OutFile "opencl-headers.zip"
-          Expand-Archive -Path "opencl-headers.zip" -DestinationPath "." -Force
-          $openclLoader = "https://github.com/KhronosGroup/OpenCL-ICD-Loader/releases/download/v2024.05.08/OpenCL-ICD-Loader-v2024.05.08-x64.zip"
-          Invoke-WebRequest -Uri $openclLoader -OutFile "opencl-loader.zip"
-          Expand-Archive -Path "opencl-loader.zip" -DestinationPath "opencl-loader" -Force
-          echo "OPENCL_INCLUDE=$PWD\OpenCL-Headers-main" >> $env:GITHUB_ENV
-          echo "OPENCL_LIB=$PWD\opencl-loader" >> $env:GITHUB_ENV
-      - name: Build
-        shell: cmd
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_OPENCL /EHsc /Iinclude /I. /I"%OPENCL_INCLUDE%" main.cpp /Fe:llm.exe /link "%OPENCL_LIB%\OpenCL.lib"
-      - name: Pack artifacts
-        shell: pwsh
-        run: |
-          $package = "llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-opencl"
-          New-Item -ItemType Directory -Force "${env:ARTIFACT_ROOT}\${package}" | Out-Null
-          Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
-          Copy-Item "$env:OPENCL_LIB\OpenCL.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
-          Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-      - uses: actions/upload-artifact@v4
-        with:
-          name: llm.cpp-bin-windows-x64-opencl
-          path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-opencl.zip
-          if-no-files-found: error
-          retention-days: 30
-
   wasm-cpu:
     name: WASM (CPU)
     needs: release-metadata
@@ -994,7 +963,6 @@ jobs:
       - windows-x64-cuda12
       - windows-x64-cuda13
       - windows-x64-vulkan
-      - windows-x64-opencl
       - wasm-cpu
       - wasm-simd
     if: always() && needs.release-metadata.result == 'success'
@@ -1033,7 +1001,6 @@ jobs:
           RES_WIN_CUDA12: ${{ needs.windows-x64-cuda12.result }}
           RES_WIN_CUDA13: ${{ needs.windows-x64-cuda13.result }}
           RES_WIN_VULKAN: ${{ needs.windows-x64-vulkan.result }}
-          RES_WIN_OPENCL: ${{ needs.windows-x64-opencl.result }}
           RES_WASM_CPU: ${{ needs.wasm-cpu.result }}
           RES_WASM_SIMD: ${{ needs.wasm-simd.result }}
         run: |
@@ -1096,7 +1063,6 @@ jobs:
             print_item "$RES_WIN_CUDA12" "Windows x64 (CUDA 12) - CUDA 12.4 DLLs" "windows-x64-cuda12"
             print_item "$RES_WIN_CUDA13" "Windows x64 (CUDA 13) - CUDA 13.3 DLLs" "windows-x64-cuda13"
             print_item "$RES_WIN_VULKAN" "Windows x64 (Vulkan)" "windows-x64-vulkan"
-            print_item "$RES_WIN_OPENCL" "Windows x64 (OpenCL)" "windows-x64-opencl"
             echo ""
             echo "**WebAssembly:**"
             echo ""
