@@ -1,8 +1,6 @@
-
 /**
  * @file   llm.cu
  * @author Eamon Sippy 
- * @Copyright (c) 2026 Eamon Sippy . All rights reserved.
  */
 
 #include "config/config.h"
@@ -16,12 +14,14 @@
 #include "include/cuda_utils.cuh"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -92,7 +92,7 @@ static bool file_exists(const std::string &path)
  */
 static std::string dir_name(const std::string &path)
 {
-      std::string::size_type pos = path.find_last_of("/\");
+      std::string::size_type pos = path.find_last_of("/\\");
       if (pos == std::string::npos)
             return ".";
       if (pos == 0)
@@ -111,7 +111,7 @@ static bool is_absolute_path(const std::string &path)
             return false;
       if (path.size() > 1 && path[1] == ':')
             return true;
-      return path[0] == '/' || path[0] == '\';
+      return path[0] == '/' || path[0] == '\\';
 }
 
 /**
@@ -125,7 +125,7 @@ static std::string join_path(const std::string &base, const std::string &child)
       if (base.empty() || base == ".")
             return child;
       char last = base[base.size() - 1];
-      if (last == '/' || last == '\')
+      if (last == '/' || last == '\\')
             return base + child;
       return base + "/" + child;
 }
@@ -184,27 +184,18 @@ static std::string choose_output_path(const std::string &requested_path,
  */
 static void print_usage(const char *argv0)
 {
-      std::cout << "Usage: " << argv0 << " [options] [data_file]
-"
-                << "
-"
-                << "  --generate               run inference only (needs saved weights)
-"
-                << "  --chat                   start interactive chat mode
-"
+      std::cout << "Usage: " << argv0 << " [options] [data_file]\n"
+                << "\n"
+                << "  --generate               run inference only (needs saved weights)\n"
+                << "  --chat                   start interactive chat mode\n"
                 << "  --chat-tokens N          max tokens per chat reply (default "
-                << DEFAULT_CHAT_TOKENS << ")
-"
-                << "  --system TEXT            system prompt prepended to every chat turn
-"
+                << DEFAULT_CHAT_TOKENS << ")\n"
+                << "  --system TEXT            system prompt prepended to every chat turn\n"
                 << "  --rep-penalty F          repetition penalty, 1.0 means off (default "
-                << DEFAULT_REP_PENALTY << ")
-"
+                << DEFAULT_REP_PENALTY << ")\n"
                 << "  --rep-window N           recent token window for penalty (default "
-                << DEFAULT_REP_WINDOW << ")
-"
-                << "  --help                   show this message
-";
+                << DEFAULT_REP_WINDOW << ")\n"
+                << "  --help                   show this message\n";
 }
 
 /**
@@ -227,8 +218,7 @@ sample_tokens(GPTLanguageModel &model, DataLoader &dl, int n_tokens, const Sampl
             if ((int)ctx.size() > BLOCK_SIZE)
                   ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
       }
-      std::cout << "
-";
+      std::cout << "\n";
 }
 
 /**
@@ -247,9 +237,9 @@ estimate_loss(GPTLanguageModel &model, DataLoader &dl, const std::string &split,
       for (int k = 0; k < EVAL_ITERS; ++k)
       {
             std::pair<std::vector<int>, std::vector<int>> batch =
-                  dl.get_batch(split, BATCH_SIZE, BLOCK_SIZE, rng);
+                dl.get_batch(split, BATCH_SIZE, BLOCK_SIZE, rng);
             std::pair<Tensor, float> result =
-                  model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false);
+                model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false);
             CUDA_CHECK(cudaDeviceSynchronize());
             total += result.second;
       }
@@ -332,30 +322,21 @@ run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens, const Samp
             if (sys_tokens.empty())
             {
                   std::cerr << "[WARN]  System prompt produced zero tokens. "
-                               "All characters may be outside the training vocabulary.
-";
+                               "All characters may be outside the training vocabulary.\n";
             }
             else
             {
                   std::cout << "[CHAT]  System prompt active (" << sys_tokens.size()
                             << " tokens, " << BLOCK_SIZE - (int)sys_tokens.size()
-                            << " tokens left for user input)
-";
+                            << " tokens left for user input)\n";
             }
       }
 
-      std::cout << "
-" << std::string(60, '=') << "
-";
-      std::cout << "  CHAT MODE (CUDA Accelerated)
-";
-      std::cout << "  Type your prompt and press Enter.
-";
-      std::cout << "  Type quit or exit to leave.
-";
-      std::cout << std::string(60, '=') << "
-
-";
+      std::cout << "\n" << std::string(60, '=') << "\n";
+      std::cout << "  CHAT MODE (CUDA Accelerated)\n";
+      std::cout << "  Type your prompt and press Enter.\n";
+      std::cout << "  Type quit or exit to leave.\n";
+      std::cout << std::string(60, '=') << "\n\n";
 
       while (!g_interrupted)
       {
@@ -366,18 +347,15 @@ run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens, const Samp
             if (!std::getline(std::cin, prompt))
                   break;
 
-            size_t s = prompt.find_first_not_of(" \t\r
-");
-            size_t e = prompt.find_last_not_of(" \t\r
-");
+            size_t s = prompt.find_first_not_of(" \t\r\n");
+            size_t e = prompt.find_last_not_of(" \t\r\n");
             if (s == std::string::npos)
                   continue;
             prompt = prompt.substr(s, e - s + 1);
 
             if (prompt == "quit" || prompt == "exit")
             {
-                  std::cout << "[Chat] Bye!
-";
+                  std::cout << "[Chat] Bye!\n";
                   break;
             }
 
@@ -399,9 +377,7 @@ run_chat(GPTLanguageModel &model, DataLoader &dl, int max_new_tokens, const Samp
                   if ((int)ctx.size() > BLOCK_SIZE)
                         ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
             }
-            std::cout << "
-
-";
+            std::cout << "\n\n";
       }
 }
 
@@ -419,8 +395,7 @@ int main(int argc, char *argv[])
 {
       std::signal(SIGINT, sig_handler);
 
-      std::cout << " [llm.cu - CUDA Engine]
-";
+      std::cout << " [llm.cu - CUDA Engine]\n";
 
       // ------------------------------------------------------------------
       // Initialize GPU Driver and cuBLAS Context
@@ -521,12 +496,10 @@ int main(int argc, char *argv[])
       }
       catch (const std::exception &e)
       {
-            std::cerr << e.what() << "
-";
+            std::cerr << e.what() << "\n";
             std::cerr << "[HINT]  Put your text at " << DEFAULT_CLEANED_PATH
                       << ", pass a file path as the first argument, or set "
-                      << DATA_PATH_ENV_VAR << ".
-";
+                      << DATA_PATH_ENV_VAR << ".\n";
             CUBLAS_CHECK(cublasDestroy(g_cublas_handle));
             return 1;
       }
@@ -539,82 +512,57 @@ int main(int argc, char *argv[])
       long n_params = model.num_params();
 
       // ***Architecture Table***
-      std::cout << "
-";
+      std::cout << "\n";
       std::cout << "  "
                    "+------------------------------------------+-----------------------------------"
-                   "-------+
-";
-      std::cout << "  | " << std::left << std::setw(83) << "LLM Architecture" << " |
-";
+                   "-------+\n";
+      std::cout << "  | " << std::left << std::setw(83) << "LLM Architecture" << " |\n";
       std::cout << "  "
                    "+------------------------------------------+-----------------------------------"
-                   "-------+
-";
+                   "-------+\n";
       std::cout << "  | Max Context Length   : " << std::left << std::setw(17) << BLOCK_SIZE
                 << " | Vocab Size (BPE)     : " << std::left << std::setw(17) << dl.vocab_size
-                << " |
-";
+                << " |\n";
       std::cout << "  | Number of Layers     : " << std::left << std::setw(17) << N_LAYER
                 << " | Attention Heads      : " << std::left << std::setw(17) << N_HEAD
-                << " |
-";
+                << " |\n";
       std::cout << "  | Embedding Channels   : " << std::left << std::setw(17) << N_EMBD
                 << " | Total Parameters     : " << std::left << std::setw(17) << n_params
-                << " |
-";
+                << " |\n";
       std::cout << "  | Repetition Penalty   : " << std::left << std::setw(17) << rep_penalty
                 << " | Repetition Window    : " << std::left << std::setw(17) << rep_window
-                << " |
-";
+                << " |\n";
       std::cout << "  "
                    "+------------------------------------------+-----------------------------------"
-                   "-------+
-
-";
+                   "-------+\n\n";
 
       // ***GPU Hardware Table***
       std::cout << "  "
                    "+------------------------------------------------------------------------------"
-                   "-------+
-";
-      std::cout << "  | " << std::left << std::setw(83) << "GPU Hardware Specs" << " |
-";
+                   "-------+\n";
+      std::cout << "  | " << std::left << std::setw(83) << "GPU Hardware Specs" << " |\n";
       std::cout << "  "
                    "+------------------------------------------------------------------------------"
-                   "-------+
-";
+                   "-------+\n";
       std::cout << "  | GPU Device           : " << std::left << std::setw(60) << prop.name
-                << " |
-";
+                << " |\n";
       std::cout << "  | GPU VRAM (Total)     : " << std::left << std::setw(60)
                 << (std::to_string(prop.totalGlobalMem / (1024 * 1024)) + " MB")
-                << " |
-";
+                << " |\n";
       std::cout << "  "
                    "+------------------------------------------------------------------------------"
-                   "-------+
-
-";
+                   "-------+\n\n";
 
       std::cout << std::right;
 
-      std::cout << "max_seq_len:    " << BLOCK_SIZE << "
-";
-      std::cout << "vocab_size:     " << dl.vocab_size << "
-";
-      std::cout << "num_layers:     " << N_LAYER << "
-";
-      std::cout << "num_heads:      " << N_HEAD << "
-";
-      std::cout << "channels:       " << N_EMBD << "
-";
-      std::cout << "num_parameters: " << n_params << "
-";
-      std::cout << "rep_penalty:    " << rep_penalty << "
-";
-      std::cout << "rep_window:     " << rep_window << "
-";
+      std::cout << "max_seq_len:    " << BLOCK_SIZE << "\n";
+      std::cout << "vocab_size:     " << dl.vocab_size << "\n";
+      std::cout << "num_layers:     " << N_LAYER << "\n";
+      std::cout << "num_heads:      " << N_HEAD << "\n";
+      std::cout << "channels:       " << N_EMBD << "\n";
+      std::cout << "num_parameters: " << n_params << "\n";
+      std::cout << "rep_penalty:    " << rep_penalty << "\n";
+      std::cout << "rep_window:     " << rep_window << "\n";
 
       // ------------------------------------------------------------------
       // Chat mode
@@ -624,24 +572,19 @@ int main(int argc, char *argv[])
             if (!file_exists(model_path))
             {
                   std::cerr << "[ERROR] Cannot start chat because model weights were not found at "
-                            << model_path << "
-";
+                            << model_path << "\n";
                   std::cerr << "[HINT]  Train first, or set " << MODEL_PATH_ENV_VAR
-                            << " to an existing weights file.
-";
+                            << " to an existing weights file.\n";
                   CUBLAS_CHECK(cublasDestroy(g_cublas_handle));
                   return 1;
             }
 
             model.load(model_path);
-            std::cout << "weights:    " << model_path << "
-";
-            std::cout << "max_tokens: " << chat_tokens << "
-";
+            std::cout << "weights:    " << model_path << "\n";
+            std::cout << "max_tokens: " << chat_tokens << "\n";
 
             if (!sampler.system_prompt.empty())
-                  std::cout << "system:     " << sampler.system_prompt << "
-";
+                  std::cout << "system:     " << sampler.system_prompt << "\n";
 
             run_chat(model, dl, chat_tokens, sampler);
             CUBLAS_CHECK(cublasDestroy(g_cublas_handle));
@@ -656,20 +599,16 @@ int main(int argc, char *argv[])
             if (!file_exists(model_path))
             {
                   std::cerr
-                        << "[ERROR] Cannot generate because model weights were not found at "
-                        << model_path << "
-";
+                      << "[ERROR] Cannot generate because model weights were not found at "
+                      << model_path << "\n";
                   std::cerr << "[HINT]  Train first, or set " << MODEL_PATH_ENV_VAR
-                            << " to an existing weights file.
-";
+                            << " to an existing weights file.\n";
                   CUBLAS_CHECK(cublasDestroy(g_cublas_handle));
                   return 1;
             }
 
             model.load(model_path);
-            std::cout << "
-generating:
-";
+            std::cout << "\ngenerating:\n";
             std::vector<int> ctx = {0};
             while (!g_interrupted)
             {
@@ -679,8 +618,7 @@ generating:
                   if ((int)ctx.size() > BLOCK_SIZE)
                         ctx = std::vector<int>(ctx.end() - BLOCK_SIZE, ctx.end());
             }
-            std::cout << "
-";
+            std::cout << "\n";
             CUBLAS_CHECK(cublasDestroy(g_cublas_handle));
             return 0;
       }
@@ -708,13 +646,13 @@ generating:
             opt.lr = current_lr;
 
             std::pair<std::vector<int>, std::vector<int>> batch =
-                  dl.get_batch("train", BATCH_SIZE, BLOCK_SIZE, rng);
+                dl.get_batch("train", BATCH_SIZE, BLOCK_SIZE, rng);
 
             SavedForward saved =
-                  forward_save(model, batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, true);
+                forward_save(model, batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, true);
 
             float batch_loss =
-                  model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false).second;
+                model.forward(batch.first, BATCH_SIZE, BLOCK_SIZE, batch.second, false).second;
 
             Grads grads = backward(model, saved);
             apply_grads(model, grads, opt);
@@ -723,7 +661,7 @@ generating:
 
             double step_ms = (wall_secs() - step_start) * 1000.0;
             int tok_per_sec =
-                  (step_ms > 0.0) ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0)) : 0;
+                (step_ms > 0.0) ? (int)((long)BATCH_SIZE * BLOCK_SIZE / (step_ms / 1000.0)) : 0;
 
             bool val_updated = false;
             bool better = false;
@@ -753,14 +691,12 @@ generating:
                       << " | " << std::fixed << std::setprecision(2) << std::setw(8) << step_ms
                       << " ms"
                       << " | " << std::setw(6) << tok_per_sec << " tok/s"
-                      << (better ? "  best" : "") << "
-";
+                      << (better ? "  best" : "") << "\n";
             std::cout.flush();
 
             if (iter % EVAL_INTERVAL == 0 || iter == MAX_ITERS)
             {
-                  std::cout << "generating:
-";
+                  std::cout << "generating:\n";
                   sample_tokens(model, dl, iter == MAX_ITERS ? 10000 : 150, sampler);
             }
       }
