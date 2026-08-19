@@ -7,7 +7,7 @@
 #include "embedding.h"
 #include "layernorm.h"
 #include "linear.h"
-#include "tensor.h"
+#include "tensor.cuh"
 
 #include <cmath>
 #include <fstream>
