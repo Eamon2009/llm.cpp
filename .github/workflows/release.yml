@@ -342,10 +342,14 @@ jobs:
         run: |
           set -euo pipefail
           export LIBRARY_PATH="$CUDA_PATH/lib64${LIBRARY_PATH:+:$LIBRARY_PATH}"
-          if [ -f "llm.cu" ]; then
-            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -lcublas -o llm llm.cu
+          if [ -f "llmcpp/llm.cu" ]; then
+            cd llmcpp
+            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -Iconfig -lcublas -o llm llm.cu
+            cd ..
+            cp llmcpp/llm ./llm
           else
-            g++ -std=c++17 -O3 -DNDEBUG -DENABLE_CUDA -I. -Iinclude -L"$CUDA_PATH/lib64" -o llm main.cpp -lcudart -lcublas
+            echo "ERROR: llmcpp/llm.cu not found"
+            exit 1
           fi
           file llm
       - name: Smoke test
@@ -390,10 +394,14 @@ jobs:
         run: |
           set -euo pipefail
           export LIBRARY_PATH="$CUDA_PATH/lib64${LIBRARY_PATH:+:$LIBRARY_PATH}"
-          if [ -f "llm.cu" ]; then
-            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -lcublas -o llm llm.cu
+          if [ -f "llmcpp/llm.cu" ]; then
+            cd llmcpp
+            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -Iconfig -lcublas -o llm llm.cu
+            cd ..
+            cp llmcpp/llm ./llm
           else
-            g++ -std=c++17 -O3 -DNDEBUG -DENABLE_CUDA -I. -Iinclude -L"$CUDA_PATH/lib64" -o llm main.cpp -lcudart -lcublas
+            echo "ERROR: llmcpp/llm.cu not found"
+            exit 1
           fi
           file llm
       - name: Smoke test
@@ -756,17 +764,14 @@ jobs:
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          if exist "llm.cu" (
-            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -o llm.exe llm.cu
+          if exist "llmcpp\llm.cu" (
+            cd llmcpp
+            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -Iconfig -o llm.exe llm.cu
+            cd ..
+            copy llmcpp\llm.exe .\llm.exe
           ) else (
-            if defined CUDA_PATH (
-              set CUDA_INC=/I"%CUDA_PATH%\include"
-              set CUDA_LIB="%CUDA_PATH%\lib\x64\cudart.lib"
-            ) else (
-              set CUDA_INC=/I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\include"
-              set CUDA_LIB="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\lib\x64\cudart.lib"
-            )
-            cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. %CUDA_INC% main.cpp /Fe:llm.exe /link %CUDA_LIB%
+            echo ERROR: llmcpp\llm.cu not found
+            exit /b 1
           )
       - name: Pack artifacts
         shell: pwsh
@@ -805,10 +810,14 @@ jobs:
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          if exist "llm.cu" (
-            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -o llm.exe llm.cu
+          if exist "llmcpp\llm.cu" (
+            cd llmcpp
+            nvcc -O3 -std=c++17 -DENABLE_CUDA -I. -Iinclude -Iconfig -o llm.exe llm.cu
+            cd ..
+            copy llmcpp\llm.exe .\llm.exe
           ) else (
-            cl /nologo /std:c++17 /O2 /DNDEBUG /DENABLE_CUDA /EHsc /Iinclude /I. /I"%CUDA_PATH%\include" main.cpp /Fe:llm.exe /link "%CUDA_PATH%\lib\x64\cudart.lib"
+            echo ERROR: llmcpp\llm.cu not found
+            exit /b 1
           )
       - name: Pack artifacts
         shell: pwsh
@@ -1030,7 +1039,7 @@ jobs:
           {
             echo "**Website:**"
             echo ""
-            echo "- https://lmgnu.github.io/llm.app"
+            echo "- https://eamon2009.github.io/llm/"
             echo ""
             echo "**macOS / iOS:**"
             echo ""
