@@ -70,7 +70,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-macos-arm64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-cpu.tar.gz
@@ -103,7 +103,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-macos-arm64-metal
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-macos-arm64-metal.tar.gz
@@ -145,7 +145,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp -r LLM.xcframework README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-ios-xcframework
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-ios-xcframework.tar.gz
@@ -186,7 +186,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cpu.tar.gz
@@ -234,7 +234,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-arm64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-cpu.tar.gz
@@ -275,7 +275,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-vulkan
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-vulkan.tar.gz
@@ -318,7 +318,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-arm64-vulkan
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-arm64-vulkan.tar.gz
@@ -370,7 +370,7 @@ jobs:
             cp "$CUDA_PATH/lib64"/libcublas.so* "${ARTIFACT_ROOT}/${package}/" 2>/dev/null || true
           fi
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-cuda12
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cuda12.tar.gz
@@ -422,7 +422,7 @@ jobs:
             cp "$CUDA_PATH/lib64"/libcublas.so* "${ARTIFACT_ROOT}/${package}/" 2>/dev/null || true
           fi
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-cuda13
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-cuda13.tar.gz
@@ -472,7 +472,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-sycl-fp32
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp32.tar.gz
@@ -522,7 +522,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-sycl-fp16
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-sycl-fp16.tar.gz
@@ -563,7 +563,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-ubuntu-x64-opencl
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-ubuntu-x64-opencl.tar.gz
@@ -603,7 +603,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-android-arm64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-cpu.tar.gz
@@ -643,7 +643,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-android-arm64-vulkan
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-arm64-vulkan.tar.gz
@@ -683,7 +683,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-android-x86_64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-android-x86_64-cpu.tar.gz
@@ -717,7 +717,7 @@ jobs:
           Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
           Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
           Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-windows-x64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cpu.zip
@@ -745,7 +745,7 @@ jobs:
           Copy-Item llm.exe "${env:ARTIFACT_ROOT}\${package}\"
           Copy-Item README.md, LICENSE "${env:ARTIFACT_ROOT}\${package}\"
           Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-windows-arm64-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-arm64-cpu.zip
@@ -786,7 +786,7 @@ jobs:
             Copy-Item "$cudaBin\cublas64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
           }
           Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-windows-x64-cuda12
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda12.zip
@@ -832,7 +832,7 @@ jobs:
             Copy-Item "$cudaBin\cublas64_*.dll" "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
           }
           Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-windows-x64-cuda13
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-cuda13.zip
@@ -873,7 +873,7 @@ jobs:
             Copy-Item $vulkanDll "${env:ARTIFACT_ROOT}\${package}\" -ErrorAction SilentlyContinue
           }
           Compress-Archive -Path "${env:ARTIFACT_ROOT}\${package}\*" -DestinationPath "${package}.zip" -Force
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-windows-x64-vulkan
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-windows-x64-vulkan.zip
@@ -907,7 +907,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm.js llm.wasm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-wasm-cpu
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-wasm-cpu.tar.gz
@@ -941,7 +941,7 @@ jobs:
           mkdir -p "${ARTIFACT_ROOT}/${package}"
           cp llm.js llm.wasm README.md LICENSE "${ARTIFACT_ROOT}/${package}/"
           tar -czf "${package}.tar.gz" -C "${ARTIFACT_ROOT}" "${package}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: llm.cpp-bin-wasm-simd
           path: llm.cpp-${{ needs.release-metadata.outputs.tag_name }}-bin-wasm-simd.tar.gz
