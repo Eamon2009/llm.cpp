@@ -88,7 +88,7 @@ jobs:
       - name: Detect changed files
         if: steps.decide.outputs.should_run == 'true'
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           list-files: json
           filters: |
