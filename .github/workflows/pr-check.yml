@@ -416,7 +416,7 @@ jobs:
           retention-days: 7
 
       - name: Publish test report
-        uses: mikepenz/action-junit-report@v4
+        uses: mikepenz/action-junit-report@v6
         if: always()
         with:
           report_paths: pytest-py${{ matrix.python-version }}.xml
